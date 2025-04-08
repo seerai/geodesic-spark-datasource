@@ -140,6 +140,7 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
   def search(
       name: String,
       project: String,
+      pageSize: Int = 10000,
       nextLink: Option[String] = None
   ): FeatureCollection = {
     nextLink match {
@@ -156,7 +157,7 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
       "boson",
       s"datasets/$project/$name/stac/search",
       Map[String, String](
-        "limit" -> "10"
+        "limit" -> pageSize.toString()
       )
     )
 

@@ -54,24 +54,36 @@ class DefaultSource extends TableProvider {
     val collectionId =
       properties.getOrDefault("collectionId", datasetId)
 
-    new BosonTable(datasetId, projectId, collectionId)
+    val src = new DataSourceConfig(
+      datasetId,
+      projectId,
+      collectionId,
+      properties.getOrDefault("pageSize", "10000").toInt
+    )
+
+    new BosonTable(src)
   }
 }
 
-class BosonTable(
+case class DataSourceConfig(
     datasetId: String,
     projectId: String,
-    collectionId: String
+    collectionId: String,
+    pageSize: Int
+)
+
+class BosonTable(
+    src: DataSourceConfig
 ) extends Table
     with SupportsRead {
 
   private val client = new GeodesicClient()
-  private val info = client.datasetInfo(datasetId, projectId)
+  private val info = client.datasetInfo(src.datasetId, src.projectId)
 
   override def name(): String = this.getClass.getName
 
   override def schema(): StructType = {
-    BosonTable.getSchema(collectionId, client, info)
+    BosonTable.getSchema(src.collectionId, client, info)
   }
 
   override def capabilities(): util.Set[TableCapability] = {
@@ -81,17 +93,15 @@ class BosonTable(
   override def newScanBuilder(
       options: CaseInsensitiveStringMap
   ): ScanBuilder = {
-    new BosonScanBuilder(client, datasetId, projectId, collectionId, info)
+    new BosonScanBuilder(client, src, info)
   }
 }
 
 object BosonTable {
   def apply(
-      datasetId: String,
-      projectId: String,
-      collectionId: String
+      src: DataSourceConfig
   ): BosonTable = {
-    new BosonTable(datasetId, projectId, collectionId)
+    new BosonTable(src)
   }
 
   def getSchema(
@@ -99,9 +109,6 @@ object BosonTable {
       client: GeodesicClient,
       info: DatasetInfo
   ): StructType = {
-    println("getSchema")
-    println("cid", collectionId)
-    println("fields", info.fields)
     var fields =
       info.fields
         .getOrElse(collectionId, Map[String, FieldDef]())
@@ -131,40 +138,34 @@ object BosonTable {
 
 class BosonScanBuilder(
     client: GeodesicClient,
-    datasetId: String,
-    projectId: String,
-    collectionId: String,
+    src: DataSourceConfig,
     info: DatasetInfo
 ) extends ScanBuilder {
   override def build(): Scan = {
-    new BosonScan(client, datasetId, projectId, collectionId, info)
+    new BosonScan(client, src, info)
   }
 }
 
 case class BosonPartition(
     partitionNumber: Int,
     client: GeodesicClient,
-    datasetId: String,
-    projectId: String,
-    collectionId: String
+    src: DataSourceConfig
 ) extends InputPartition
 
 class BosonScan(
     client: GeodesicClient,
-    datasetId: String,
-    projectId: String,
-    collectionId: String,
+    src: DataSourceConfig,
     info: DatasetInfo
 ) extends Scan
     with Batch {
   override def readSchema(): StructType = {
-    BosonTable.getSchema(collectionId, client, info)
+    BosonTable.getSchema(src.collectionId, client, info)
   }
 
   override def toBatch(): Batch = this
 
   override def planInputPartitions(): Array[InputPartition] = {
-    Array(new BosonPartition(0, client, datasetId, projectId, collectionId))
+    Array(new BosonPartition(0, client, src))
   }
 
   override def createReaderFactory(): PartitionReaderFactory = {
@@ -194,8 +195,9 @@ class BosonPartitionReader(partition: BosonPartition)
         }
       case None =>
         val sr = partition.client.search(
-          partition.datasetId,
-          partition.projectId,
+          partition.src.datasetId,
+          partition.src.projectId,
+          partition.src.pageSize,
           nextLink
         )
         features = Option(sr.features)
