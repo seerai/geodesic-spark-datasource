@@ -1,4 +1,4 @@
-package com.seerai.geodesic.sources.boson
+package ai.seer.geodesic.sources.boson
 
 import java.util
 
@@ -22,11 +22,11 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.apache.spark.unsafe.types.UTF8String
 import scala.collection.JavaConverters._
 import org.apache.spark.sql.connector.catalog.SupportsRead
-import com.seerai.geodesic.GeodesicClient
-import com.seerai.geodesic.FieldDef
-import com.seerai.geodesic.DatasetInfo
-import com.seerai.geodesic.FeatureCollection
-import com.seerai.geodesic.Feature
+import ai.seer.geodesic.GeodesicClient
+import ai.seer.geodesic.FieldDef
+import ai.seer.geodesic.DatasetInfo
+import ai.seer.geodesic.FeatureCollection
+import ai.seer.geodesic.Feature
 import play.api.libs.json.JsString
 import play.api.libs.json.JsNumber
 import play.api.libs.json.JsBoolean

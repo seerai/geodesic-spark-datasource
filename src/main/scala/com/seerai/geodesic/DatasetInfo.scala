@@ -1,4 +1,4 @@
-package com.seerai.geodesic
+package ai.seer.geodesic
 
 import play.api.libs.json._
 

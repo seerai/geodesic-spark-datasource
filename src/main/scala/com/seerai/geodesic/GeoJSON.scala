@@ -1,4 +1,4 @@
-package com.seerai.geodesic
+package ai.seer.geodesic
 
 import play.api.libs.json._
 import org.locationtech.jts.geom.Geometry

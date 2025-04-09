@@ -5,7 +5,7 @@ val sparkVersion = settingKey[String]("Spark version")
 lazy val root = (project in file(".")).settings(
   inThisBuild(
     List(
-      organization := "com.seerai",
+      organization := "ai.seer",
       scalaVersion := "2.12.13"
     )
   ),

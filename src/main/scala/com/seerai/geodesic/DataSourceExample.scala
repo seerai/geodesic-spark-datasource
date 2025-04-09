@@ -1,10 +1,10 @@
-package com.seerai.geodesic
+package ai.seer.geodesic
 
 import play.api.libs.json._
 import org.apache.sedona.spark.SedonaContext
 
-import com.seerai.geodesic.sources.boson.DefaultSource
-import com.seerai.geodesic.sources.boson.{
+import ai.seer.geodesic.sources.boson.DefaultSource
+import ai.seer.geodesic.sources.boson.{
   BosonTable,
   BosonPartition,
   BosonPartitionReader
@@ -23,7 +23,7 @@ object GeodesicConfigApp extends App {
   val sedona = SedonaContext.create(config)
 
   val df = sedona.read
-    .format("com.seerai.geodesic.sources.boson")
+    .format("ai.seer.geodesic.sources.boson")
     .option("datasetId", "ukr-adm3-boundaries")
     .option("projectId", "global")
     .load()

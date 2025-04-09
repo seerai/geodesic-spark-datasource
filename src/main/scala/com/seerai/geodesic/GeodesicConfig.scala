@@ -1,11 +1,10 @@
-package com.seerai.geodesic
+package ai.seer.geodesic
 
 import play.api.libs.json._
 
-
-/**
-  * The config class for Geodesic. Either checks environment for GEODESIC_API_KEY and optionally GEODESIC_HOST
-  * or reads the active cluster from the config file located at ~/.config/geodesic/config.json
+/** The config class for Geodesic. Either checks environment for
+  * GEODESIC_API_KEY and optionally GEODESIC_HOST or reads the active cluster
+  * from the config file located at ~/.config/geodesic/config.json
   */
 case class GeodesicConfig(active: String, clusters: List[ClusterConfig])
 
