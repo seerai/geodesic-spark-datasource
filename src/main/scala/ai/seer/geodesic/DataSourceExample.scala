@@ -1,6 +1,7 @@
 package ai.seer.geodesic
 
 import play.api.libs.json._
+import org.apache.spark.sql.SparkSession
 import org.apache.sedona.spark.SedonaContext
 
 import ai.seer.geodesic.sources.boson.DefaultSource
@@ -15,12 +16,14 @@ import ai.seer.geodesic.sources.boson.{
 object GeodesicConfigApp extends App {
   val client = new GeodesicClient()
 
-  val config = SedonaContext
+  val spark = SparkSession
     .builder()
     .master("local[*]")
     .appName("GeodesicDemo")
     .getOrCreate()
-  val sedona = SedonaContext.create(config)
+
+  // Create Sedona context
+  val sedona = SedonaContext.create(spark)
 
   val df = sedona.read
     .format("ai.seer.geodesic.sources.boson")
