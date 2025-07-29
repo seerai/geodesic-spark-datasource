@@ -70,14 +70,34 @@ jobs:
         echo "Imported GPG keys:"
         gpg --list-secret-keys
         
+        # Configure GPG for headless operation
+        mkdir -p ~/.gnupg
+        chmod 700 ~/.gnupg
+        cat > ~/.gnupg/gpg-agent.conf <<EOF
+        allow-loopback-pinentry
+        pinentry-program /usr/bin/pinentry-loopback
+        default-cache-ttl 7200
+        max-cache-ttl 7200
+        EOF
+        
+        # Set GPG environment variables for headless operation
+        echo "GPG_TTY=\$(tty)" >> $GITHUB_ENV
+        export GPG_TTY=$(tty)
+        
+        # Kill any existing GPG agent and start fresh
+        gpgconf --kill gpg-agent
+        gpg-agent --daemon --allow-loopback-pinentry
+        
         # Test GPG signing with the passphrase
         echo "Testing GPG signing..."
-        echo "test" | gpg --batch --yes --pinentry-mode loopback --passphrase "${{ secrets.GPG_PASSPHRASE }}" --detach-sign --armor --output test.sig || echo "GPG test signing failed"
-        
-        # Configure GPG agent for batch operations
-        echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
-        echo "pinentry-program /usr/bin/pinentry-tty" >> ~/.gnupg/gpg-agent.conf
-        gpgconf --kill gpg-agent
+        echo "test" | gpg --batch --yes --pinentry-mode loopback --passphrase "${{ secrets.GPG_PASSPHRASE }}" --detach-sign --armor --output test.sig
+        if [ -f test.sig ]; then
+          echo "✅ GPG test signing successful"
+          rm test.sig
+        else
+          echo "❌ GPG test signing failed"
+          exit 1
+        fi
 
     - name: Configure Git
       run: |
@@ -93,6 +113,7 @@ jobs:
         SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
         VERSION: ${{ steps.version.outputs.version }}
         GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        GPG_TTY: $(tty)
       run: |
         # Check if Sonatype credentials are set
         if [ -z "$SONATYPE_USERNAME" ]; then
@@ -107,9 +128,12 @@ jobs:
           exit 1
         fi
         
+        # Set up GPG environment for signing
+        export GPG_TTY=$(tty)
+        
         # Stage the artifacts (sbt 1.11.0+ built-in Central Portal support)
         echo "Staging signed artifacts..."
-        sbt -Dpgp.passphrase="$GPG_PASSPHRASE" publishSigned
+        sbt -Dpgp.passphrase="$GPG_PASSPHRASE" -Dgpg.pinentry-mode=loopback publishSigned
         
         # Upload bundle to Central Publisher Portal
         echo "Uploading bundle to Central Publisher Portal..."
