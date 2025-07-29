@@ -96,19 +96,20 @@ jobs:
         VERSION: ${{ steps.version.outputs.version }}
         PGP_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
       run: |
-        # Configure sbt for signing
+        # Configure sbt for signing and publishing
         mkdir -p ~/.sbt/1.0
         cat > ~/.sbt/1.0/sonatype.sbt <<EOF
         credentials += Credentials("Sonatype Nexus Repository Manager",
                                    "s01.oss.sonatype.org",
                                    "$SONATYPE_USERNAME",
                                    "$SONATYPE_PASSWORD")
-        
-        ThisBuild / pgpPassphrase := Some("$PGP_PASSPHRASE".toArray)
         EOF
         
+        # Set GPG passphrase for signing
+        export PGP_PASSPHRASE="$PGP_PASSPHRASE"
+        
         # Publish signed artifacts
-        sbt publishSigned
+        sbt -Dpgp.passphrase="$PGP_PASSPHRASE" publishSigned
         sbt sonatypeBundleRelease
 
     - name: Create tag
