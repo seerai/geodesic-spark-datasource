@@ -85,8 +85,11 @@ jobs:
         export GPG_TTY=$(tty)
         
         # Kill any existing GPG agent and start fresh
-        gpgconf --kill gpg-agent
-        gpg-agent --daemon --allow-loopback-pinentry
+        gpgconf --kill gpg-agent || true
+        sleep 2
+        
+        # Start GPG agent with proper configuration
+        gpg-agent --daemon --allow-loopback-pinentry || echo "GPG agent already running"
         
         # Test GPG signing with the passphrase
         echo "Testing GPG signing..."
@@ -95,7 +98,8 @@ jobs:
           echo "✅ GPG test signing successful"
           rm test.sig
         else
-          echo "❌ GPG test signing failed"
+          echo "❌ GPG test signing failed - checking GPG agent status"
+          gpg-connect-agent 'keyinfo --list' /bye || echo "GPG agent not responding"
           exit 1
         fi
 
