@@ -67,7 +67,17 @@ jobs:
         echo "GPG_KEY_ID=$GPG_KEY_ID" >> $GITHUB_ENV
         
         # Verify key is imported
+        echo "Imported GPG keys:"
         gpg --list-secret-keys
+        
+        # Test GPG signing with the passphrase
+        echo "Testing GPG signing..."
+        echo "test" | gpg --batch --yes --pinentry-mode loopback --passphrase "${{ secrets.GPG_PASSPHRASE }}" --detach-sign --armor --output test.sig || echo "GPG test signing failed"
+        
+        # Configure GPG agent for batch operations
+        echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+        echo "pinentry-program /usr/bin/pinentry-tty" >> ~/.gnupg/gpg-agent.conf
+        gpgconf --kill gpg-agent
 
     - name: Configure Git
       run: |
@@ -82,7 +92,7 @@ jobs:
         SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
         SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
         VERSION: ${{ steps.version.outputs.version }}
-        PGP_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
       run: |
         # Check if Sonatype credentials are set
         if [ -z "$SONATYPE_USERNAME" ]; then
@@ -99,7 +109,7 @@ jobs:
         
         # Stage the artifacts (sbt 1.11.0+ built-in Central Portal support)
         echo "Staging signed artifacts..."
-        sbt -Dpgp.passphrase="$PGP_PASSPHRASE" publishSigned
+        sbt -Dpgp.passphrase="$GPG_PASSPHRASE" publishSigned
         
         # Upload bundle to Central Publisher Portal
         echo "Uploading bundle to Central Publisher Portal..."
