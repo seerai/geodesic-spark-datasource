@@ -4,7 +4,6 @@ resolvers += "sonatype-releases" at "https://oss.sonatype.org/content/repositori
 
 // Publishing plugins
 addSbtPlugin("com.github.sbt" % "sbt-pgp" % "2.2.1")
-addSbtPlugin("org.xerial.sbt" % "sbt-sonatype" % "3.10.0")
 
 addSbtPlugin("org.scoverage" % "sbt-scoverage" % "1.6.0")
 

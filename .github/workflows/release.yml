@@ -91,26 +91,32 @@ jobs:
 
     - name: Build and publish to Maven Central
       env:
-        SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-        SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+        CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
         VERSION: ${{ steps.version.outputs.version }}
         PGP_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
       run: |
-        # Configure sbt for signing and publishing
+        # Check if Central Portal token is set
+        if [ -z "$CENTRAL_TOKEN" ]; then
+          echo "❌ CENTRAL_TOKEN is not set. Please set up Central Publisher Portal token."
+          echo "Visit: https://central.sonatype.com/account to generate a token"
+          exit 1
+        fi
+        
+        # Configure sbt for Central Publisher Portal
         mkdir -p ~/.sbt/1.0
-        cat > ~/.sbt/1.0/sonatype.sbt <<EOF
-        credentials += Credentials("Sonatype Nexus Repository Manager",
-                                   "s01.oss.sonatype.org",
-                                   "$SONATYPE_USERNAME",
-                                   "$SONATYPE_PASSWORD")
+        cat > ~/.sbt/1.0/credentials.sbt <<EOF
+        credentials += Credentials("Central Repository", 
+                                   "central.sonatype.com", 
+                                   "token", 
+                                   "$CENTRAL_TOKEN")
         EOF
         
         # Set GPG passphrase for signing
         export PGP_PASSPHRASE="$PGP_PASSPHRASE"
         
-        # Publish signed artifacts
+        # Build and publish signed artifacts
+        echo "Building and publishing signed artifacts to Central Publisher Portal..."
         sbt -Dpgp.passphrase="$PGP_PASSPHRASE" publishSigned
-        sbt sonatypeBundleRelease
 
     - name: Create tag
       id: tag
