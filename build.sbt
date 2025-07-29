@@ -43,10 +43,10 @@ lazy val root = (project in file(".")).settings(
   ) ++ Resolver.sonatypeOssRepos("public"),
   pomIncludeRepository := { _ => false },
 
-  // Maven Central publishing configuration
-  publishTo := sonatypePublishToBundle.value,
-  sonatypeCredentialHost := "s01.oss.sonatype.org",
-  sonatypeRepository := "https://s01.oss.sonatype.org/service/local",
+  // Maven Central publishing configuration (Central Publisher Portal)
+  publishTo := Some(
+    "Central Repository" at "https://central.sonatype.com/api/v1/publisher/upload"
+  ),
 
   // Required metadata for Maven Central
   description := "Spark DataSource v2 for accessing Geodesic spatial data with Apache Sedona integration",
