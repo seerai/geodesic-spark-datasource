@@ -59,27 +59,15 @@ jobs:
 
     - name: Setup GPG for signing
       run: |
-        # Create a simple GPG key for CI signing
-        cat > gpg-batch <<EOF
-        %echo Generating GPG key for CI
-        Key-Type: RSA
-        Key-Length: 2048
-        Subkey-Type: RSA
-        Subkey-Length: 2048
-        Name-Real: GitHub Actions CI
-        Name-Email: gcp-headless@seerai.space
-        Expire-Date: 0
-        Passphrase: ${{ secrets.GPG_PASSPHRASE }}
-        %commit
-        %echo Done
-        EOF
+        # Import GPG private key from secrets
+        echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 -d | gpg --batch --import
         
-        gpg --batch --generate-key gpg-batch
-        rm gpg-batch
-        
-        # Export the key for sbt-pgp
+        # Get the key ID
         GPG_KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | head -1 | sed 's/.*\/\([A-F0-9]*\).*/\1/')
         echo "GPG_KEY_ID=$GPG_KEY_ID" >> $GITHUB_ENV
+        
+        # Verify key is imported
+        gpg --list-secret-keys
 
     - name: Configure Git
       run: |
@@ -115,11 +103,27 @@ jobs:
         
         # Upload bundle to Central Publisher Portal
         echo "Uploading bundle to Central Publisher Portal..."
-        sbt sonaUpload
+        if ! sbt sonaUpload; then
+          echo "❌ Bundle upload failed. This could be due to:"
+          echo "1. Namespace 'ai.seer' not verified in Central Publisher Portal"
+          echo "2. Missing required POM metadata"
+          echo "3. Invalid artifact signatures"
+          echo ""
+          echo "Please check:"
+          echo "- Visit https://central.sonatype.com/publishing to see detailed error messages"
+          echo "- Verify namespace 'ai.seer' is claimed in your Central Portal account"
+          echo "- Check that all required POM fields are present"
+          exit 1
+        fi
         
         # Automatically release (publish) the bundle
         echo "Publishing to Maven Central..."
-        sbt sonaRelease
+        if ! sbt sonaRelease; then
+          echo "❌ Bundle release failed"
+          echo "The bundle was uploaded successfully but release failed"
+          echo "You can manually release it from: https://central.sonatype.com/publishing"
+          exit 1
+        fi
 
     - name: Create tag
       id: tag
