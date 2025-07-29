@@ -91,36 +91,35 @@ jobs:
 
     - name: Build and publish to Maven Central
       env:
-        CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
+        SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+        SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
         VERSION: ${{ steps.version.outputs.version }}
         PGP_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
       run: |
-        # Check if Central Portal token is set
-        if [ -z "$CENTRAL_TOKEN" ]; then
-          echo "❌ CENTRAL_TOKEN is not set. Please set up Central Publisher Portal token."
+        # Check if Sonatype credentials are set
+        if [ -z "$SONATYPE_USERNAME" ]; then
+          echo "❌ SONATYPE_USERNAME is not set. Please set up Central Publisher Portal credentials."
           echo "Visit: https://central.sonatype.com/account to generate a token"
           exit 1
         fi
         
-        # Configure sbt for Central Publisher Portal
-        mkdir -p ~/.sbt/1.0
-        cat > ~/.sbt/1.0/sonatype.sbt <<EOF
-        credentials += Credentials("Central Repository", 
-                                   "central.sonatype.com", 
-                                   "token", 
-                                   "$CENTRAL_TOKEN")
-        EOF
+        if [ -z "$SONATYPE_PASSWORD" ]; then
+          echo "❌ SONATYPE_PASSWORD is not set. Please set up Central Publisher Portal credentials."
+          echo "Visit: https://central.sonatype.com/account to generate a token"
+          exit 1
+        fi
         
-        # Set GPG passphrase for signing
-        export PGP_PASSPHRASE="$PGP_PASSPHRASE"
-        
-        # Build and publish signed artifacts to Central Publisher Portal
-        echo "Publishing signed artifacts to Central Publisher Portal..."
+        # Stage the artifacts (sbt 1.11.0+ built-in Central Portal support)
+        echo "Staging signed artifacts..."
         sbt -Dpgp.passphrase="$PGP_PASSPHRASE" publishSigned
         
-        # Release the bundle (new Central Publisher Portal process)
-        echo "Releasing bundle from Central Publisher Portal..."
-        sbt sonatypeBundleRelease
+        # Upload bundle to Central Publisher Portal
+        echo "Uploading bundle to Central Publisher Portal..."
+        sbt sonaUpload
+        
+        # Automatically release (publish) the bundle
+        echo "Publishing to Maven Central..."
+        sbt sonaRelease
 
     - name: Create tag
       id: tag
