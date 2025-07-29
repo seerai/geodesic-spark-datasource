@@ -43,24 +43,21 @@ lazy val root = (project in file(".")).settings(
   ) ++ Resolver.sonatypeOssRepos("public"),
   pomIncludeRepository := { _ => false },
 
-  // Maven Central publishing configuration (Central Publisher Portal)
-  publishTo := sonatypePublishToBundle.value,
-  sonatypeCredentialHost := "central.sonatype.com",
-  sonatypeRepository := "https://central.sonatype.com/api/v1/publisher",
-
   // Version scheme for better dependency management
   ThisBuild / versionScheme := Some("early-semver"),
 
   // Required metadata for Maven Central
-  description := "Spark DataSource v2 for accessing Geodesic spatial data with Apache Sedona integration",
-  homepage := Some(url("https://github.com/seerai/geodesic-spark-datasource")),
-  scmInfo := Some(
+  ThisBuild / description := "Spark DataSource v2 for accessing Geodesic spatial data with Apache Sedona integration",
+  ThisBuild / homepage := Some(
+    url("https://github.com/seerai/geodesic-spark-datasource")
+  ),
+  ThisBuild / scmInfo := Some(
     ScmInfo(
       url("https://github.com/seerai/geodesic-spark-datasource"),
       "scm:git@github.com:seerai/geodesic-spark-datasource.git"
     )
   ),
-  developers := List(
+  ThisBuild / developers := List(
     Developer(
       id = "seerai",
       name = "Seer AI",
@@ -68,14 +65,22 @@ lazy val root = (project in file(".")).settings(
       url = url("https://seerai.space")
     )
   ),
-  licenses := List(
+  ThisBuild / licenses := List(
     "Apache 2" -> new URL("http://www.apache.org/licenses/LICENSE-2.0.txt")
   ),
 
+  // Central Portal publishing configuration (sbt 1.11.0+ built-in support)
+  ThisBuild / publishTo := {
+    val centralSnapshots =
+      "https://central.sonatype.com/repository/maven-snapshots/"
+    if (isSnapshot.value) Some("central-snapshots" at centralSnapshots)
+    else localStaging.value
+  },
+
   // Publishing settings
-  publishMavenStyle := true,
+  ThisBuild / publishMavenStyle := true,
+  ThisBuild / pomIncludeRepository := { _ => false },
   Test / publishArtifact := false,
-  pomIncludeRepository := { _ => false },
 
   // Ensure sources and docs are published
   Compile / packageDoc / publishArtifact := true,
