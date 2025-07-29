@@ -30,6 +30,10 @@ import ai.seer.geodesic.Feature
 import play.api.libs.json.JsString
 import play.api.libs.json.JsNumber
 import play.api.libs.json.JsBoolean
+import org.apache.spark.sql.types.BinaryType
+import org.locationtech.jts.geom.Geometry
+import org.locationtech.jts.io.WKBWriter
+import org.apache.sedona.sql.utils.GeometrySerializer
 import org.apache.spark.sql.sedona_sql.UDT.GeometryUDT
 
 class DefaultSource extends TableProvider {
@@ -184,59 +188,76 @@ class BosonPartitionReaderFactory extends PartitionReaderFactory {
 class BosonPartitionReader(partition: BosonPartition)
     extends PartitionReader[InternalRow] {
 
-  var features: Option[List[Feature]] = None
+  var features: List[Feature] = List.empty
   var nextLink: Option[String] = None
   var index: Int = 0
-  override def next(): Boolean = {
-    features match {
-      case Some(features) =>
-        if (index < features.size) {
-          return true
-        }
-      case None =>
-        val sr = partition.client.search(
-          partition.src.datasetId,
-          partition.src.projectId,
-          partition.src.pageSize,
-          nextLink
-        )
-        features = Option(sr.features)
-        val nextLinks = sr.links
-          .find(_.rel == "next")
-          .map(_.href)
+  var hasInitialized: Boolean = false
+  var isExhausted: Boolean = false
 
-        if (nextLinks.isEmpty) {
-          nextLink = None
-          return false
-        }
-        nextLinks
-          .foreach { link =>
-            nextLink = Option(link)
-          }
-        index = 0
+  override def next(): Boolean = {
+    // If we're already exhausted, return false
+    if (isExhausted) {
+      return false
     }
 
-    features match {
-      case Some(feats) =>
-        if (index < feats.size) {
-          return true
-        }
-        features = None
-        return next()
-      case None =>
-        // No more features to read
+    // If we have features and haven't reached the end of current page
+    if (index < features.size) {
+      return true
+    }
+
+    // We've exhausted current page, try to fetch next page
+    fetchNextPage()
+  }
+
+  private def fetchNextPage(): Boolean = {
+    try {
+      val sr = partition.client.search(
+        partition.src.datasetId,
+        partition.src.projectId,
+        partition.src.pageSize,
+        if (hasInitialized) nextLink else None
+      )
+
+      hasInitialized = true
+      features = sr.features
+      index = 0
+
+      // Update nextLink for subsequent calls
+      nextLink = sr.links
+        .find(_.rel == "next")
+        .map(_.href)
+
+      // Check if we have any features to process
+      if (features.nonEmpty) {
+        return true
+      }
+
+      // If no features and no next link, we're done
+      if (nextLink.isEmpty) {
+        isExhausted = true
         return false
+      }
+
+      // If no features but there's a next link, try fetching again
+      // (This handles edge case of empty pages)
+      fetchNextPage()
+
+    } catch {
+      case e: Exception =>
+        // Log error and mark as exhausted
+        println(s"Error fetching next page: ${e.getMessage}")
+        isExhausted = true
+        false
     }
   }
 
   override def get(): InternalRow = {
-    var feature: Feature = null
-    features match {
-      case Some(features) =>
-        feature = features(index)
-      case None =>
-        throw new Exception("No features available")
+    if (index >= features.size) {
+      throw new Exception("No more features available - call next() first")
     }
+
+    val feature = features(index)
+    index += 1
 
     val tuple = feature.properties
       .map { case (key, value) =>
@@ -251,11 +272,14 @@ class BosonPartitionReader(partition: BosonPartition)
       .map(_.get)
       .toSeq
       .sortBy(_._1)
-    var values = tuple.map(_._2) :+ GeometryUDT.serialize(feature.geometry)
-    index += 1
 
+    val serializedGeometry = GeometryUDT.serialize(feature.geometry)
+    val values = tuple.map(_._2) :+ serializedGeometry
     InternalRow.fromSeq(values)
   }
 
-  override def close(): Unit = {}
+  override def close(): Unit = {
+    features = List.empty
+    isExhausted = true
+  }
 }

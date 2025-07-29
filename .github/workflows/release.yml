@@ -1,0 +1,177 @@
+name: Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set Up SSH Agent
+      uses: webfactory/ssh-agent@v0.8.0
+      with:
+        ssh-private-key: ${{ secrets.HEADLESS_USER_KEY }}
+
+    - name: Set up JDK 8
+      uses: actions/setup-java@v4
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+
+    - name: Cache SBT dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.ivy2/cache
+          ~/.sbt
+          ~/.coursier/cache
+        key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.sbt', '**/project/build.properties', '**/project/plugins.sbt') }}
+        restore-keys: |
+          ${{ runner.os }}-sbt-
+
+    - name: Semantic Version
+      id: version
+      uses: paulhatch/semantic-version@v5.4.0
+      with:
+        tag_prefix: "v"
+        major_pattern: "(MAJOR)"
+        minor_pattern: "(MINOR)"
+        version_format: "${major}.${minor}.${patch}"
+        search_commit_body: true
+        user_format_type: "csv"
+        bump_each_commit: false
+
+    - name: Create version file
+      run: |
+        echo "VERSION=${{ steps.version.outputs.version }}" >> $GITHUB_ENV
+        echo "Version: ${{ steps.version.outputs.version }}"
+
+    - name: Setup GPG for signing
+      run: |
+        # Create a simple GPG key for CI signing
+        cat > gpg-batch <<EOF
+        %echo Generating GPG key for CI
+        Key-Type: RSA
+        Key-Length: 2048
+        Subkey-Type: RSA
+        Subkey-Length: 2048
+        Name-Real: GitHub Actions CI
+        Name-Email: gcp-headless@seerai.space
+        Expire-Date: 0
+        Passphrase: ${{ secrets.GPG_PASSPHRASE }}
+        %commit
+        %echo Done
+        EOF
+        
+        gpg --batch --generate-key gpg-batch
+        rm gpg-batch
+        
+        # Export the key for sbt-pgp
+        GPG_KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | head -1 | sed 's/.*\/\([A-F0-9]*\).*/\1/')
+        echo "GPG_KEY_ID=$GPG_KEY_ID" >> $GITHUB_ENV
+
+    - name: Configure Git
+      run: |
+        git config user.name github-actions
+        git config user.email gcp-headless@seerai.space
+
+    - name: Run tests
+      run: sbt test
+
+    - name: Build and publish to Maven Central
+      env:
+        SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+        SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+        VERSION: ${{ steps.version.outputs.version }}
+        PGP_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      run: |
+        # Configure sbt for signing
+        mkdir -p ~/.sbt/1.0
+        cat > ~/.sbt/1.0/sonatype.sbt <<EOF
+        credentials += Credentials("Sonatype Nexus Repository Manager",
+                                   "s01.oss.sonatype.org",
+                                   "$SONATYPE_USERNAME",
+                                   "$SONATYPE_PASSWORD")
+        
+        ThisBuild / pgpPassphrase := Some("$PGP_PASSPHRASE".toArray)
+        EOF
+        
+        # Publish signed artifacts
+        sbt publishSigned
+        sbt sonatypeBundleRelease
+
+    - name: Create tag
+      id: tag
+      if: steps.version.outputs.changed == 'true'
+      run: |
+        git config user.name github-actions
+        git config user.email gcp-headless@seerai.space
+        git tag v${{ steps.version.outputs.version }} -m "Beep, Boop. Written by a robot. Beep, Boop."
+        git push --tags
+
+    - name: Generate changelog
+      id: changelog
+      if: steps.version.outputs.changed == 'true'
+      run: |
+        # Get commits since last tag
+        LAST_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+        if [ -z "$LAST_TAG" ]; then
+          COMMITS=$(git log --pretty=format:"- %s" --no-merges)
+        else
+          COMMITS=$(git log --pretty=format:"- %s" --no-merges ${LAST_TAG}..HEAD)
+        fi
+        
+        # Create changelog
+        CHANGELOG="## Changes in v${{ steps.version.outputs.version }}
+
+        $COMMITS"
+        
+        # Set output for GitHub release
+        echo "changelog<<EOF" >> $GITHUB_OUTPUT
+        echo "$CHANGELOG" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Create GitHub Release
+      if: steps.version.outputs.changed == 'true'
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ steps.version.outputs.version }}
+        release_name: Release v${{ steps.version.outputs.version }}
+        body: ${{ steps.changelog.outputs.changelog }}
+        draft: false
+        prerelease: false
+
+    - name: Update README badges
+      if: steps.version.outputs.changed == 'true'
+      run: |
+        # Update version in README.md
+        sed -i "s/version>.*</version>${{ steps.version.outputs.version }}</g" README.md
+        sed -i "s/% \".*\"/% \"${{ steps.version.outputs.version }}\"/g" README.md
+        sed -i "s/:.*_2.12/:${{ steps.version.outputs.version }}_2.12/g" README.md
+        
+        # Commit changes
+        git add README.md
+        git commit -m "Update version to ${{ steps.version.outputs.version }} in README [skip ci]" || exit 0
+        git push origin main
+
+    - name: Notify on success
+      if: success()
+      run: |
+        echo "✅ Successfully released version ${{ steps.version.outputs.version }} to Maven Central"
+        echo "📦 Artifact: ai.seer:geodesic-spark-datasource-sedona_2.12:${{ steps.version.outputs.version }}"
+
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "❌ Release failed for version ${{ steps.version.outputs.version }}"
+        echo "Check the logs above for details"

@@ -1,21 +1,15 @@
-// give the user a nice default project!
+// Geodesic Spark DataSource for Apache Sedona
 
-val sparkVersion = settingKey[String]("Spark version")
+ThisBuild / organization := "ai.seer"
+ThisBuild / scalaVersion := "2.12.13"
+ThisBuild / version := sys.env.getOrElse("VERSION", "0.0.1-SNAPSHOT")
 
 lazy val root = (project in file(".")).settings(
-  inThisBuild(
-    List(
-      organization := "ai.seer",
-      scalaVersion := "2.12.13"
-    )
-  ),
-  name := "geodesic",
-  version := "0.0.1",
-  sparkVersion := "3.3.0",
+  name := "geodesic-spark-datasource-sedona",
   javacOptions ++= Seq("-source", "1.8", "-target", "1.8"),
   javaOptions ++= Seq("-Xms512M", "-Xmx2048M"),
   scalacOptions ++= Seq("-deprecation", "-unchecked"),
-  parallelExecution in Test := false,
+  Test / parallelExecution := false,
   fork := true,
   coverageHighlighting := true,
   libraryDependencies ++= Seq(
@@ -33,11 +27,11 @@ lazy val root = (project in file(".")).settings(
   ),
 
   // uses compile classpath for the run task, including "provided" jar (cf http://stackoverflow.com/a/21803413/3827)
-  run in Compile := Defaults
+  Compile / run := Defaults
     .runTask(
-      fullClasspath in Compile,
-      mainClass in (Compile, run),
-      runner in (Compile, run)
+      Compile / fullClasspath,
+      Compile / run / mainClass,
+      Compile / run / runner
     )
     .evaluated,
   scalacOptions ++= Seq("-deprecation", "-unchecked"),
@@ -45,17 +39,42 @@ lazy val root = (project in file(".")).settings(
   resolvers ++= Seq(
     "sonatype-releases" at "https://oss.sonatype.org/content/repositories/releases/",
     "Typesafe repository" at "https://repo.typesafe.com/typesafe/releases/",
-    "Second Typesafe repo" at "https://repo.typesafe.com/typesafe/maven-releases/",
-    Resolver.sonatypeRepo("public")
-  ),
+    "Second Typesafe repo" at "https://repo.typesafe.com/typesafe/maven-releases/"
+  ) ++ Resolver.sonatypeOssRepos("public"),
   pomIncludeRepository := { _ => false },
 
-  // publish settings
-  publishTo := {
-    val nexus = "https://oss.sonatype.org/"
-    if (isSnapshot.value)
-      Some("snapshots" at nexus + "content/repositories/snapshots")
-    else
-      Some("releases" at nexus + "service/local/staging/deploy/maven2")
-  }
+  // Maven Central publishing configuration
+  publishTo := sonatypePublishToBundle.value,
+  sonatypeCredentialHost := "s01.oss.sonatype.org",
+  sonatypeRepository := "https://s01.oss.sonatype.org/service/local",
+
+  // Required metadata for Maven Central
+  description := "Spark DataSource v2 for accessing Geodesic spatial data with Apache Sedona integration",
+  homepage := Some(url("https://github.com/seerai/geodesic-spark-datasource")),
+  scmInfo := Some(
+    ScmInfo(
+      url("https://github.com/seerai/geodesic-spark-datasource"),
+      "scm:git@github.com:seerai/geodesic-spark-datasource.git"
+    )
+  ),
+  developers := List(
+    Developer(
+      id = "seerai",
+      name = "Seer AI",
+      email = "contact@seerai.space",
+      url = url("https://seerai.space")
+    )
+  ),
+  licenses := List(
+    "Apache 2" -> new URL("http://www.apache.org/licenses/LICENSE-2.0.txt")
+  ),
+
+  // Publishing settings
+  publishMavenStyle := true,
+  Test / publishArtifact := false,
+  pomIncludeRepository := { _ => false },
+
+  // Ensure sources and docs are published
+  Compile / packageDoc / publishArtifact := true,
+  Compile / packageSrc / publishArtifact := true
 )
