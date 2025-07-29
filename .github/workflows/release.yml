@@ -104,7 +104,7 @@ jobs:
         
         # Configure sbt for Central Publisher Portal
         mkdir -p ~/.sbt/1.0
-        cat > ~/.sbt/1.0/credentials.sbt <<EOF
+        cat > ~/.sbt/1.0/sonatype.sbt <<EOF
         credentials += Credentials("Central Repository", 
                                    "central.sonatype.com", 
                                    "token", 
@@ -114,9 +114,13 @@ jobs:
         # Set GPG passphrase for signing
         export PGP_PASSPHRASE="$PGP_PASSPHRASE"
         
-        # Build and publish signed artifacts
-        echo "Building and publishing signed artifacts to Central Publisher Portal..."
+        # Build and publish signed artifacts to Central Publisher Portal
+        echo "Publishing signed artifacts to Central Publisher Portal..."
         sbt -Dpgp.passphrase="$PGP_PASSPHRASE" publishSigned
+        
+        # Release the bundle (new Central Publisher Portal process)
+        echo "Releasing bundle from Central Publisher Portal..."
+        sbt sonatypeBundleRelease
 
     - name: Create tag
       id: tag
