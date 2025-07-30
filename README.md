@@ -254,6 +254,11 @@ For questions, issues, or feature requests:
 
 ## Changelog
 
+### 0.0.4 (JSON Parsing Fix)
+- **Fixed**: JSON parsing error when API response has missing or null "links" field
+- **Improved**: Made `links` field optional in `FeatureCollection` to handle various API response formats
+- **Enhanced**: More robust pagination handling for datasets without pagination links
+
 ### 0.0.3 (Critical Bug Fix)
 - **Fixed**: ClassCastException when displaying DataFrame data due to schema-value order mismatch
 - **Improved**: Data row creation now ensures values match schema field order exactly

@@ -20,7 +20,7 @@ object Feature {}
 
 case class FeatureCollection(
     features: List[Feature],
-    links: List[Link]
+    links: Option[List[Link]]
 )
 
 object FeatureCollection {

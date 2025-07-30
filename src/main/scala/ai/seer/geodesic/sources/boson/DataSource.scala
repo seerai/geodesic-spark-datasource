@@ -271,6 +271,7 @@ class BosonPartitionReader(partition: BosonPartition)
 
       // Update nextLink for subsequent calls
       nextLink = sr.links
+        .getOrElse(List.empty)
         .find(_.rel == "next")
         .map(_.href)
 
