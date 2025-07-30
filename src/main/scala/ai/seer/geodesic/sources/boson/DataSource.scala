@@ -22,7 +22,9 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.apache.spark.unsafe.types.UTF8String
 import scala.collection.JavaConverters._
 import org.apache.spark.sql.connector.catalog.SupportsRead
+import org.apache.spark.sql.sources.Filter
 import ai.seer.geodesic.GeodesicClient
+import ai.seer.geodesic.CQL2FilterTranslator
 import ai.seer.geodesic.FieldDef
 import ai.seer.geodesic.DatasetInfo
 import ai.seer.geodesic.FeatureCollection
@@ -103,7 +105,9 @@ case class DataSourceConfig(
     datasetId: String,
     projectId: String,
     collectionId: String,
-    pageSize: Int
+    pageSize: Int,
+    cql2Filter: Option[play.api.libs.json.JsValue] = None,
+    intersects: Option[play.api.libs.json.JsValue] = None
 )
 
 class BosonTable(
@@ -174,9 +178,52 @@ class BosonScanBuilder(
     client: GeodesicClient,
     src: DataSourceConfig,
     info: DatasetInfo
-) extends ScanBuilder {
+) extends ScanBuilder
+    with SupportsPushDownFilters
+    with Logging {
+
+  private var _pushedFilters: Array[Filter] = Array.empty
+
+  override def pushFilters(filters: Array[Filter]): Array[Filter] = {
+    logInfo(s"Attempting to push down ${filters.length} filters")
+
+    val analysis = CQL2FilterTranslator.analyzeFilters(filters)
+
+    // Log what we're pushing down
+    if (analysis.cql2Filter.isDefined) {
+      logInfo(s"Pushing down CQL2 filter: ${analysis.cql2Filter.get}")
+    }
+    if (analysis.intersects.isDefined) {
+      logInfo(
+        s"Pushing down spatial intersects filter: ${analysis.intersects.get}"
+      )
+    }
+    if (analysis.unsupportedFilters.nonEmpty) {
+      logInfo(
+        s"Returning ${analysis.unsupportedFilters.length} unsupported filters to Spark"
+      )
+    }
+
+    // Store the pushed filters for use in build()
+    this._pushedFilters = filters.diff(analysis.unsupportedFilters)
+
+    // Return unsupported filters for Spark to handle
+    analysis.unsupportedFilters
+  }
+
+  override def pushedFilters(): Array[Filter] = _pushedFilters
+
   override def build(): Scan = {
-    new BosonScan(client, src, info)
+    // Analyze filters again to get the CQL2 and intersects parameters
+    val analysis = CQL2FilterTranslator.analyzeFilters(_pushedFilters)
+
+    // Create updated DataSourceConfig with filters
+    val updatedSrc = src.copy(
+      cql2Filter = analysis.cql2Filter,
+      intersects = analysis.intersects
+    )
+
+    new BosonScan(client, updatedSrc, info)
   }
 }
 
@@ -262,7 +309,9 @@ class BosonPartitionReader(partition: BosonPartition)
         partition.src.datasetId,
         partition.src.projectId,
         partition.src.pageSize,
-        if (hasInitialized) nextLink else None
+        if (hasInitialized) nextLink else None,
+        partition.src.cql2Filter,
+        partition.src.intersects
       )
 
       hasInitialized = true
