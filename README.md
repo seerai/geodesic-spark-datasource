@@ -254,6 +254,10 @@ For questions, issues, or feature requests:
 
 ## Changelog
 
+### 0.0.3 (Critical Bug Fix)
+- **Fixed**: ClassCastException when displaying DataFrame data due to schema-value order mismatch
+- **Improved**: Data row creation now ensures values match schema field order exactly
+
 ### 0.0.2 (Bug Fixes & Documentation)
 - **Fixed**: Infinite loop issue in DataSourceExample when reaching end of dataset
 - **Fixed**: Proper pagination termination when `nextLink` becomes `None`
