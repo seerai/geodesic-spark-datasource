@@ -35,8 +35,9 @@ import org.locationtech.jts.geom.Geometry
 import org.locationtech.jts.io.WKBWriter
 import org.apache.sedona.sql.utils.GeometrySerializer
 import org.apache.spark.sql.sedona_sql.UDT.GeometryUDT
+import org.apache.spark.internal.Logging
 
-class DefaultSource extends TableProvider {
+class DefaultSource extends TableProvider with Logging {
   override def inferSchema(options: CaseInsensitiveStringMap): StructType = {
     getTable(
       null,
@@ -58,11 +59,40 @@ class DefaultSource extends TableProvider {
     val collectionId =
       properties.getOrDefault("collectionId", datasetId)
 
+    // Get dataset info to determine max page size
+    val client = new GeodesicClient()
+    val info = client.datasetInfo(datasetId, projectId)
+
+    // Determine the effective page size with proper precedence:
+    // 1. User-provided value (if specified)
+    // 2. Dataset's maxPageSize (if available)
+    // 3. Default value (2000)
+    val defaultPageSize = 2000
+    val datasetMaxPageSize = info.config match {
+      case Some(config) => config.maxPageSize
+      case None         => defaultPageSize
+    }
+
+    val requestedPageSize = properties.get("pageSize") match {
+      case null => datasetMaxPageSize // No user value, use dataset max
+      case userValue =>
+        val userPageSize = userValue.toInt
+        // User value takes precedence, but warn if it exceeds dataset max and use the max
+        if (userPageSize > datasetMaxPageSize) {
+          logWarning(
+            s"Requested pageSize ($userPageSize) exceeds dataset maxPageSize ($datasetMaxPageSize). Using max value."
+          )
+          datasetMaxPageSize
+        } else {
+          userPageSize
+        }
+    }
+
     val src = new DataSourceConfig(
       datasetId,
       projectId,
       collectionId,
-      properties.getOrDefault("pageSize", "10000").toInt
+      requestedPageSize
     )
 
     new BosonTable(src)
@@ -186,13 +216,23 @@ class BosonPartitionReaderFactory extends PartitionReaderFactory {
 }
 
 class BosonPartitionReader(partition: BosonPartition)
-    extends PartitionReader[InternalRow] {
+    extends PartitionReader[InternalRow]
+    with Logging {
 
   var features: List[Feature] = List.empty
   var nextLink: Option[String] = None
   var index: Int = 0
   var hasInitialized: Boolean = false
   var isExhausted: Boolean = false
+
+  // Cache the schema and field types for efficient lookup
+  private val schema = BosonTable.getSchema(
+    partition.src.collectionId,
+    partition.client,
+    partition.client
+      .datasetInfo(partition.src.datasetId, partition.src.projectId)
+  )
+  private val fieldTypes = schema.fields.map(f => f.name -> f.dataType).toMap
 
   override def next(): Boolean = {
     // If we're already exhausted, return false
@@ -205,7 +245,14 @@ class BosonPartitionReader(partition: BosonPartition)
       return true
     }
 
-    // We've exhausted current page, try to fetch next page
+    // We've exhausted current page
+    // If there's no next link, we've reached the end of the dataset
+    if (nextLink.isEmpty && hasInitialized) {
+      isExhausted = true
+      return false
+    }
+
+    // Try to fetch next page
     fetchNextPage()
   }
 
@@ -227,25 +274,11 @@ class BosonPartitionReader(partition: BosonPartition)
         .find(_.rel == "next")
         .map(_.href)
 
-      // Check if we have any features to process
-      if (features.nonEmpty) {
-        return true
-      }
-
-      // If no features and no next link, we're done
-      if (nextLink.isEmpty) {
-        isExhausted = true
-        return false
-      }
-
-      // If no features but there's a next link, try fetching again
-      // (This handles edge case of empty pages)
-      fetchNextPage()
-
+      // Return true if we have features to process
+      features.nonEmpty
     } catch {
       case e: Exception =>
-        // Log error and mark as exhausted
-        println(s"Error fetching next page: ${e.getMessage}")
+        logError(s"Error fetching data: ${e.getMessage}", e)
         isExhausted = true
         false
     }
@@ -261,9 +294,22 @@ class BosonPartitionReader(partition: BosonPartition)
 
     val tuple = feature.properties
       .map { case (key, value) =>
+        // Get the expected type for this field from the schema
+        val expectedType = fieldTypes.get(key)
+
         value match {
-          case JsString(s)  => Option(key, UTF8String.fromString(s.toString()))
-          case JsNumber(n)  => Option(key, n.doubleValue())
+          case JsString(s) => Option(key, UTF8String.fromString(s.toString()))
+          case JsNumber(n) =>
+            expectedType match {
+              case Some(IntegerType) =>
+                // Convert to integer, rounding to the nearest value to handle potential decimal values
+                Option(key, Math.round(n.doubleValue()).toInt)
+              case Some(DoubleType) =>
+                Option(key, n.doubleValue())
+              case _ =>
+                // Default to double if type is unknown
+                Option(key, n.doubleValue())
+            }
           case JsBoolean(b) => Option(key, b.booleanValue())
           case _            => None
         }

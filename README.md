@@ -1,7 +1,8 @@
 # Geodesic Spark DataSource for Apache Sedona
 
-[![Maven Central](https:0.0.1_2.12)
-[![Build Status](https://github.com/seerai/geodesic-spark-datasource/workflows/CI/badge.svg)](https://github.com/seerai/geodesic-spark-datasource/actions)
+[![Maven Central](https://img.shields.io/maven-central/v/ai.seer/geodesic-spark-datasource-sedona_2.12.svg)](https://search.maven.org/artifact/ai.seer/geodesic-spark-datasource-sedona_2.12)
+[![Build Status](https://github.com/seerai/geodesic-spark-datasource/workflows/PR%20Check/badge.svg)](https://github.com/seerai/geodesic-spark-datasource/actions)
+[![GitHub Release](https://img.shields.io/github/v/release/seerai/geodesic-spark-datasource)](https://github.com/seerai/geodesic-spark-datasource/releases/latest)
 
 A Spark DataSource v2 implementation for accessing geospatial data from Geodesic with seamless Apache Sedona integration.
 
@@ -9,7 +10,6 @@ A Spark DataSource v2 implementation for accessing geospatial data from Geodesic
 
 - **Spark DataSource v2**: Native Spark SQL integration with optimized data loading
 - **Apache Sedona Integration**: Built-in support for spatial operations and geometry types
-- **Pagination Support**: Efficient handling of large datasets with automatic pagination
 - **Authentication**: Secure access using Geodesic API keys or token-based authentication
 - **Flexible Configuration**: Support for custom datasets, projects, and collections
 
@@ -32,7 +32,7 @@ Add the following dependency to your `pom.xml`:
 Add the following to your `build.sbt`:
 
 ```scala
-libraryDependencies += "ai.seer" %% "0.0.1"
+libraryDependencies += "ai.seer" %% "geodesic-spark-datasource-sedona" % "0.0.1"
 ```
 
 ### Gradle
@@ -40,7 +40,7 @@ libraryDependencies += "ai.seer" %% "0.0.1"
 Add the following to your `build.gradle`:
 
 ```gradle
-implementation 'ai.seer:0.0.1_2.12:0.0.1'
+implementation 'ai.seer:geodesic-spark-datasource-sedona_2.12:0.0.1'
 ```
 
 ## Quick Start
@@ -119,19 +119,17 @@ export GEODESIC_HOST="https://api.geodesic.seerai.space"  # Optional, defaults t
 ```
 
 #### 2. Configuration File
-Create a configuration file at `~/.config/geodesic/config.json`:
+Create a configuration file at:
 
-```json
-{
-  "active": "default",
-  "clusters": [
-    {
-      "name": "default",
-      "host": "https://api.geodesic.seerai.space",
-      "api_key": "your-api-key-here"
-    }
-  ]
-}
+```python
+import geodesic
+geodesic.authenticate()
+```
+
+or
+
+```bash
+$ geodesic authenticate
 ```
 
 #### 3. Custom Configuration Path
@@ -144,9 +142,9 @@ export GEODESIC_CONFIG_PATH="/path/to/your/config.json"
 | Option | Description | Default | Required |
 |--------|-------------|---------|----------|
 | `datasetId` | The ID of the dataset to load | - | Yes |
-| `projectId` | The project containing the dataset | `"global"` | No |
+| `projectId` | The project containing the dataset | - | Yes |
 | `collectionId` | The collection within the dataset | Same as `datasetId` | No |
-| `pageSize` | Number of features to fetch per page | `10000` | No |
+| `pageSize` | Number of features to fetch per page | Dataset Default or `2000` | No |
 
 ### Example with All Options
 
@@ -200,9 +198,8 @@ The DataSource automatically infers the schema from the Geodesic dataset metadat
 ## Performance Tips
 
 1. **Pagination**: Adjust `pageSize` based on your memory constraints and network conditions
-2. **Filtering**: Use Spark's built-in filtering capabilities to reduce data transfer
-3. **Caching**: Cache frequently accessed datasets using `df.cache()`
-4. **Partitioning**: Consider repartitioning large datasets for better parallelism
+2. **Caching**: Cache frequently accessed datasets using `df.cache()`
+3. **Partitioning**: Consider repartitioning large datasets for better parallelism
 
 ## Error Handling
 
@@ -256,6 +253,14 @@ For questions, issues, or feature requests:
 - Documentation: [https://docs.geodesic.seerai.space](https://docs.geodesic.seerai.space)
 
 ## Changelog
+
+### 0.0.2 (Bug Fixes & Documentation)
+- **Fixed**: Infinite loop issue in DataSourceExample when reaching end of dataset
+- **Fixed**: Proper pagination termination when `nextLink` becomes `None`
+- **Fixed**: README badges (Maven Central, Build Status, GitHub Release)
+- **Fixed**: Dependency examples for SBT and Gradle
+- **Improved**: Cleaned up debug logging and simplified pagination logic
+- **Added**: GitHub Release badge to README
 
 ### 0.0.1 (Initial Release)
 - Spark DataSource v2 implementation

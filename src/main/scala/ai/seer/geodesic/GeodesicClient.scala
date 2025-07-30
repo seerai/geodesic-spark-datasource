@@ -1,6 +1,7 @@
 package ai.seer.geodesic
 
 import play.api.libs.json._
+import org.apache.spark.internal.Logging
 import sttp.client3.{basicRequest, UriContext, HttpClientSyncBackend}
 import java.io.Serializable
 case class Tokens(access_token: String, id_token: String)
@@ -10,7 +11,8 @@ object Tokens {
 }
 
 class GeodesicClient(accessToken: String = "", idToken: String = "")
-    extends Serializable {
+    extends Serializable
+    with Logging {
   private var _accessToken = accessToken
   private var _idToken = idToken
   private var _cluster: ClusterConfig = _
@@ -152,6 +154,10 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
         return Json.parse(resStr).as[FeatureCollection]
       case None =>
     }
+
+    logInfo(
+      s"Searching dataset: $name in project: $project with pageSize: $pageSize"
+    )
 
     val resStr: String = get(
       "boson",

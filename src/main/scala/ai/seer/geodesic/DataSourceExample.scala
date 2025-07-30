@@ -29,8 +29,12 @@ object GeodesicConfigApp extends App {
     .format("ai.seer.geodesic.sources.boson")
     .option("datasetId", "ukr-adm3-boundaries")
     .option("projectId", "global")
+    .option("pageSize", "5000")
     .load()
   df.show()
+
+  println(df.count())
+
   /*
   var cluster = client.load()
 
