@@ -292,7 +292,8 @@ class BosonPartitionReader(partition: BosonPartition)
     val feature = features(index)
     index += 1
 
-    val tuple = feature.properties
+    // Create a map of property values with proper type conversion
+    val propertyValues = feature.properties
       .map { case (key, value) =>
         // Get the expected type for this field from the schema
         val expectedType = fieldTypes.get(key)
@@ -316,11 +317,17 @@ class BosonPartitionReader(partition: BosonPartition)
       }
       .filter(_.isDefined)
       .map(_.get)
-      .toSeq
-      .sortBy(_._1)
+      .toMap
 
-    val serializedGeometry = GeometryUDT.serialize(feature.geometry)
-    val values = tuple.map(_._2) :+ serializedGeometry
+    // Create values array in the same order as schema fields
+    val values = schema.fields.map { field =>
+      if (field.name == "geometry") {
+        GeometryUDT.serialize(feature.geometry)
+      } else {
+        propertyValues.getOrElse(field.name, null)
+      }
+    }
+
     InternalRow.fromSeq(values)
   }
 
