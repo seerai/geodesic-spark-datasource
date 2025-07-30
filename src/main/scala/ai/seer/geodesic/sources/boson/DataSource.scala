@@ -302,8 +302,8 @@ class BosonPartitionReader(partition: BosonPartition)
           case JsNumber(n) =>
             expectedType match {
               case Some(IntegerType) =>
-                // Convert to integer, handling potential decimal values
-                Option(key, n.doubleValue().toInt)
+                // Convert to integer, rounding to the nearest value to handle potential decimal values
+                Option(key, Math.round(n.doubleValue()).toInt)
               case Some(DoubleType) =>
                 Option(key, n.doubleValue())
               case _ =>
