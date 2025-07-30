@@ -50,11 +50,13 @@ def create_sedona_context():
             "spark.jars.packages",
             "org.apache.sedona:sedona-spark-3.3_2.12:1.7.0,"
             "org.datasyslab:geotools-wrapper:1.7.0-28.5,"
-            "ai.seer:geodesic-spark-datasource-sedona_2.12:0.0.2",
+            "ai.seer:geodesic-spark-datasource-sedona_2.12:0.0.3",
         )
         .config(
             "spark.jars.repositories", "https://artifacts.unidata.ucar.edu/repository/unidata-all"
         )
+        .config("spark.executor.memory", "8g")
+        .config("spark.driver.memory", "8g")
         .getOrCreate()
     )
     sedona = SedonaContext.create(config)
