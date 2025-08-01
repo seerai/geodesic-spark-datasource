@@ -87,37 +87,5 @@ object SpatialFilterExample extends App {
   println(s"Point query time: ${pointTime}ms")
   pointResult.show(5)
 
-  // Validation: Check if pushdown worked
-  println(s"\n=== VALIDATION RESULTS ===")
-  println(
-    "If the Sedona-Integrated Spatial Filter Pushdown worked, you should see:"
-  )
-  println(
-    "1. 'GeodesicSedonaContext: Successfully registered Geodesic spatial filter pushdown rule' message"
-  )
-  println(
-    "2. 'SedonaIntegratedSpatialFilterPushDown: Processing filter on Geodesic relation' messages"
-  )
-  println(
-    "3. 'SedonaIntegratedSpatialFilterPushDown: Found X spatial filters' messages"
-  )
-  println(
-    "4. 'SedonaIntegratedSpatialFilterPushDown: Successfully converted to GeoJSON' messages"
-  )
-  println("5. 'GeodesicClient: Searching with intersects parameter' messages")
-  println(
-    "6. NO 'Post-Scan Filters: **org.apache.spark.sql.sedona_sql.expressions.ST_Intersects**' messages"
-  )
-
-  if (spatialTime < 30000) { // Less than 30 seconds suggests server-side filtering
-    println(
-      "✅ LIKELY SUCCESS: Fast spatial query suggests server-side filtering!"
-    )
-  } else {
-    println(
-      "❌ POSSIBLE FAILURE: Slow spatial query suggests client-side filtering"
-    )
-  }
-
   spark.stop()
 }

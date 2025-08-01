@@ -5,6 +5,8 @@ import org.apache.spark.internal.Logging
 import sttp.client3.{basicRequest, UriContext, HttpClientSyncBackend}
 import java.io.Serializable
 import sttp.client3.{Request, Response}
+import java.net.http.HttpClient
+import java.time.Duration
 case class Tokens(access_token: String, id_token: String)
 
 object Tokens {
@@ -17,6 +19,17 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
   private var _accessToken = accessToken
   private var _idToken = idToken
   private var _cluster: ClusterConfig = _
+
+  /** Create an HTTP client backend with compression enabled (gzip and brotli)
+    */
+  private def createBackendWithCompression() = {
+    val httpClient = HttpClient
+      .newBuilder()
+      .connectTimeout(Duration.ofSeconds(60))
+      .build()
+
+    HttpClientSyncBackend.usingClient(httpClient)
+  }
 
   /** Load the config from the config file or environment variables
     */
@@ -75,10 +88,11 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
     }
 
     val krampusHost = url("krampus", "auth/token")
-    val backend = HttpClientSyncBackend()
+    val backend = createBackendWithCompression()
 
     var req = basicRequest
       .header("Api-Key", apiKey)
+      .header("Accept-Encoding", "gzip, deflate, br")
       .get(uri"$krampusHost")
     try {
       var response = req.send(backend)
@@ -101,7 +115,6 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
       query: Map[String, String]
   ): String = {
     val (accessToken, idToken) = getAccessToken()
-    val backend = HttpClientSyncBackend()
 
     val queryStr = query
       .map { case (k, v) => k + "=" + v }
@@ -113,11 +126,12 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
 
   def getURL(u: String): String = {
     val (accessToken, idToken) = getAccessToken()
-    val backend = HttpClientSyncBackend()
+    val backend = createBackendWithCompression()
 
     var req = basicRequest
       .header("X-Auth-Request-Access-Token", "Bearer " + accessToken)
       .header("Authorization", "Bearer " + idToken)
+      .header("Accept-Encoding", "gzip, deflate, br")
       .get(uri"${u}")
     try {
       var response = req.send(backend)
@@ -135,13 +149,14 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
       body: JsValue
   ): String = {
     val (accessToken, idToken) = getAccessToken()
-    val backend = HttpClientSyncBackend()
+    val backend = createBackendWithCompression()
 
     val u = url(serviceName, path)
     var req = basicRequest
       .header("X-Auth-Request-Access-Token", "Bearer " + accessToken)
       .header("Authorization", "Bearer " + idToken)
       .header("Content-Type", "application/json")
+      .header("Accept-Encoding", "gzip, deflate, br")
       .body(Json.stringify(body))
       .post(uri"${u}")
     try {
