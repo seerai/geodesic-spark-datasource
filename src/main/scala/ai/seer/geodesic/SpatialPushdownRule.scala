@@ -107,9 +107,7 @@ class SpatialPushdownRule(sparkSession: SparkSession)
       case _: ST_Overlaps   => true
       case _: ST_Touches    => true
       case _: ST_Crosses    => true
-      case And(left, right) =>
-        isSpatialExpression(left) || isSpatialExpression(right)
-      case _ => false
+      case _                => false
     }
   }
 
@@ -132,17 +130,17 @@ class SpatialPushdownRule(sparkSession: SparkSession)
       // All spatial predicates can be pushed down as intersects filters
       // since Sedona will run them as post-scan filters anyway
       case ST_Intersects(args) =>
-        extractGeometryFromArgs(args, pushableColumn).map(geometryToGeoJSON)
+        extractGeometryFromArgs(args, pushableColumn).flatMap(geometryToGeoJSON)
       case ST_Contains(args) =>
-        extractGeometryFromArgs(args, pushableColumn).map(geometryToGeoJSON)
+        extractGeometryFromArgs(args, pushableColumn).flatMap(geometryToGeoJSON)
       case ST_Within(args) =>
-        extractGeometryFromArgs(args, pushableColumn).map(geometryToGeoJSON)
+        extractGeometryFromArgs(args, pushableColumn).flatMap(geometryToGeoJSON)
       case ST_Overlaps(args) =>
-        extractGeometryFromArgs(args, pushableColumn).map(geometryToGeoJSON)
+        extractGeometryFromArgs(args, pushableColumn).flatMap(geometryToGeoJSON)
       case ST_Touches(args) =>
-        extractGeometryFromArgs(args, pushableColumn).map(geometryToGeoJSON)
+        extractGeometryFromArgs(args, pushableColumn).flatMap(geometryToGeoJSON)
       case ST_Crosses(args) =>
-        extractGeometryFromArgs(args, pushableColumn).map(geometryToGeoJSON)
+        extractGeometryFromArgs(args, pushableColumn).flatMap(geometryToGeoJSON)
 
       case And(left, right) =>
         // For AND conditions, try to extract spatial predicates from either side
@@ -166,7 +164,7 @@ class SpatialPushdownRule(sparkSession: SparkSession)
     }
   }
 
-  private def geometryToGeoJSON(geometry: Geometry): JsValue = {
+  private def geometryToGeoJSON(geometry: Geometry): Option[JsValue] = {
     // Convert JTS Geometry to GeoJSON
     val wkt = geometry.toText()
     CQL2FilterTranslator.wktToGeoJson(wkt)

@@ -41,10 +41,7 @@ class GeodesicSparkExtension
 
         // Add it to extraOptimizations automatically
         val currentOptimizations = sparkSession.experimental.extraOptimizations
-        if (!currentOptimizations.exists {
-              case r: SpatialPushdownRule => r.sparkSession eq sparkSession
-              case _ => false
-            }) {
+        if (!currentOptimizations.exists(_.isInstanceOf[SpatialPushdownRule])) {
           sparkSession.experimental.extraOptimizations =
             currentOptimizations :+ rule
         }
