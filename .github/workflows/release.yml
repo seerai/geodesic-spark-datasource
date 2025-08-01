@@ -210,12 +210,19 @@ jobs:
       if: steps.version.outputs.changed == 'true'
       run: |
         # Update version in README.md
-        sed -i "s/version>.*</version>${{ steps.version.outputs.version }}</g" README.md
-        sed -i "s/% \".*\"/% \"${{ steps.version.outputs.version }}\"/g" README.md
-        sed -i "s/:.*_2.12/:${{ steps.version.outputs.version }}_2.12/g" README.md
+        # Update Maven dependency version
+        sed -i "s/<version>[0-9]\+\.[0-9]\+\.[0-9]\+<\/version>/<version>${{ steps.version.outputs.version }}<\/version>/g" README.md
+        # Update SBT dependency version
+        sed -i "s/% \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/% \"${{ steps.version.outputs.version }}\"/g" README.md
+        # Update Gradle dependency version
+        sed -i "s/:geodesic-spark-datasource-sedona_2.12:[0-9]\+\.[0-9]\+\.[0-9]\+/:geodesic-spark-datasource-sedona_2.12:${{ steps.version.outputs.version }}/g" README.md
         
         # Update version in geodesic_pyspark_examples.py
         sed -i "s/ai.seer:geodesic-spark-datasource-sedona_2.12:[0-9]\+\.[0-9]\+\.[0-9]\+/ai.seer:geodesic-spark-datasource-sedona_2.12:${{ steps.version.outputs.version }}/g" geodesic_pyspark_examples.py
+        
+        # Show what changed for debugging
+        echo "Updated versions in README.md:"
+        grep -n "version\|%" README.md | head -10
         
         # Commit changes
         git add README.md geodesic_pyspark_examples.py
