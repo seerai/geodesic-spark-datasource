@@ -41,8 +41,13 @@ class GeodesicSparkExtension
 
         // Add it to extraOptimizations automatically
         val currentOptimizations = sparkSession.experimental.extraOptimizations
-        sparkSession.experimental.extraOptimizations =
-          currentOptimizations :+ rule
+        if (!currentOptimizations.exists {
+              case r: SpatialPushdownRule => r.sparkSession eq sparkSession
+              case _ => false
+            }) {
+          sparkSession.experimental.extraOptimizations =
+            currentOptimizations :+ rule
+        }
 
         logInfo(
           "GeodesicSparkExtension: Successfully added spatial filter pushdown rule to extraOptimizations"
