@@ -5,8 +5,6 @@ import org.apache.spark.internal.Logging
 import sttp.client3.{basicRequest, UriContext, HttpClientSyncBackend}
 import java.io.Serializable
 import sttp.client3.{Request, Response}
-import java.net.http.HttpClient
-import java.time.Duration
 case class Tokens(access_token: String, id_token: String)
 
 object Tokens {
@@ -23,12 +21,7 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
   /** Create an HTTP client backend with compression enabled (gzip and brotli)
     */
   private def createBackendWithCompression() = {
-    val httpClient = HttpClient
-      .newBuilder()
-      .connectTimeout(Duration.ofSeconds(60))
-      .build()
-
-    HttpClientSyncBackend.usingClient(httpClient)
+    HttpClientSyncBackend()
   }
 
   /** Load the config from the config file or environment variables
@@ -97,7 +90,7 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
     try {
       var response = req.send(backend)
       val tokens = response.body match {
-        case Right(body) => Json.parse(body).as[Tokens]
+        case Right(body) => Json.parse(body.toString).as[Tokens]
         case Left(error) =>
           throw new Exception("Error getting tokens: " + error)
       }
@@ -136,7 +129,7 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
     try {
       var response = req.send(backend)
       response.body match {
-        case Right(body) => body
+        case Right(body) => body.toString
         case Left(error) =>
           throw new Exception("Error getting data: " + error)
       }
@@ -162,7 +155,7 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
     try {
       var response = req.send(backend)
       response.body match {
-        case Right(responseBody) => responseBody
+        case Right(responseBody) => responseBody.toString
         case Left(error) =>
           throw new Exception("Error posting data: " + error)
       }
