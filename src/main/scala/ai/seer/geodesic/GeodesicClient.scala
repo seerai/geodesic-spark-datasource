@@ -18,6 +18,12 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
   private var _idToken = idToken
   private var _cluster: ClusterConfig = _
 
+  /** Create an HTTP client backend with compression enabled (gzip and brotli)
+    */
+  private def createBackendWithCompression() = {
+    HttpClientSyncBackend()
+  }
+
   /** Load the config from the config file or environment variables
     */
   def load(): ClusterConfig = {
@@ -75,15 +81,16 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
     }
 
     val krampusHost = url("krampus", "auth/token")
-    val backend = HttpClientSyncBackend()
+    val backend = createBackendWithCompression()
 
     var req = basicRequest
       .header("Api-Key", apiKey)
+      .header("Accept-Encoding", "gzip, deflate, br")
       .get(uri"$krampusHost")
     try {
       var response = req.send(backend)
       val tokens = response.body match {
-        case Right(body) => Json.parse(body).as[Tokens]
+        case Right(body) => Json.parse(body.toString).as[Tokens]
         case Left(error) =>
           throw new Exception("Error getting tokens: " + error)
       }
@@ -101,7 +108,6 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
       query: Map[String, String]
   ): String = {
     val (accessToken, idToken) = getAccessToken()
-    val backend = HttpClientSyncBackend()
 
     val queryStr = query
       .map { case (k, v) => k + "=" + v }
@@ -113,16 +119,17 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
 
   def getURL(u: String): String = {
     val (accessToken, idToken) = getAccessToken()
-    val backend = HttpClientSyncBackend()
+    val backend = createBackendWithCompression()
 
     var req = basicRequest
       .header("X-Auth-Request-Access-Token", "Bearer " + accessToken)
       .header("Authorization", "Bearer " + idToken)
+      .header("Accept-Encoding", "gzip, deflate, br")
       .get(uri"${u}")
     try {
       var response = req.send(backend)
       response.body match {
-        case Right(body) => body
+        case Right(body) => body.toString
         case Left(error) =>
           throw new Exception("Error getting data: " + error)
       }
@@ -135,19 +142,20 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
       body: JsValue
   ): String = {
     val (accessToken, idToken) = getAccessToken()
-    val backend = HttpClientSyncBackend()
+    val backend = createBackendWithCompression()
 
     val u = url(serviceName, path)
     var req = basicRequest
       .header("X-Auth-Request-Access-Token", "Bearer " + accessToken)
       .header("Authorization", "Bearer " + idToken)
       .header("Content-Type", "application/json")
+      .header("Accept-Encoding", "gzip, deflate, br")
       .body(Json.stringify(body))
       .post(uri"${u}")
     try {
       var response = req.send(backend)
       response.body match {
-        case Right(responseBody) => responseBody
+        case Right(responseBody) => responseBody.toString
         case Left(error) =>
           throw new Exception("Error posting data: " + error)
       }
