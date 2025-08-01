@@ -251,19 +251,15 @@ object CQL2FilterTranslator extends Logging {
 
   /** Converts WKT to GeoJSON
     */
-  def wktToGeoJson(wkt: String): JsValue = {
+  def wktToGeoJson(wkt: String): Option[JsValue] = {
     try {
       val reader = new WKTReader()
       val geometry = reader.read(wkt)
-      geometryToGeoJson(geometry)
+      Some(geometryToGeoJson(geometry))
     } catch {
       case e: Exception =>
         logWarning(s"Failed to parse WKT: $wkt", e)
-        // Return a simple point as fallback
-        Json.obj(
-          "type" -> "Point",
-          "coordinates" -> JsArray(Seq(JsNumber(0), JsNumber(0)))
-        )
+        None
     }
   }
 
