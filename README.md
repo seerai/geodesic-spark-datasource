@@ -1,6 +1,6 @@
 # Geodesic Spark DataSource for Apache Sedona
 
-[![Maven Central](https:0.0.4_2.12)
+[![Maven Central](https:0.1.0_2.12)
 [![Build Status](https://github.com/seerai/geodesic-spark-datasource/workflows/PR%20Check/badge.svg)](https://github.com/seerai/geodesic-spark-datasource/actions)
 [![GitHub Release](https://img.shields.io/github/v/release/seerai/geodesic-spark-datasource)](https://github.com/seerai/geodesic-spark-datasource/releases/latest)
 
@@ -23,7 +23,7 @@ Add the following dependency to your `pom.xml`:
 <dependency>
     <groupId>ai.seer</groupId>
     <artifactId>geodesic-spark-datasource-sedona_2.12</artifactId>
-    <version>0.0.4</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 
@@ -32,7 +32,7 @@ Add the following dependency to your `pom.xml`:
 Add the following to your `build.sbt`:
 
 ```scala
-libraryDependencies += "ai.seer" %% "0.0.4"
+libraryDependencies += "ai.seer" %% "0.1.0"
 ```
 
 ### Gradle
@@ -40,7 +40,7 @@ libraryDependencies += "ai.seer" %% "0.0.4"
 Add the following to your `build.gradle`:
 
 ```gradle
-implementation 'ai.seer:0.0.4_2.12:0.0.1'
+implementation 'ai.seer:0.1.0_2.12:0.0.1'
 ```
 
 ## Quick Start
