@@ -4,6 +4,7 @@ import play.api.libs.json._
 import org.apache.spark.internal.Logging
 import sttp.client3.{basicRequest, UriContext, HttpClientSyncBackend}
 import java.io.Serializable
+import sttp.client3.{Request, Response}
 case class Tokens(access_token: String, id_token: String)
 
 object Tokens {
@@ -128,6 +129,31 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
     } finally backend.close()
   }
 
+  def post(
+      serviceName: String,
+      path: String,
+      body: JsValue
+  ): String = {
+    val (accessToken, idToken) = getAccessToken()
+    val backend = HttpClientSyncBackend()
+
+    val u = url(serviceName, path)
+    var req = basicRequest
+      .header("X-Auth-Request-Access-Token", "Bearer " + accessToken)
+      .header("Authorization", "Bearer " + idToken)
+      .header("Content-Type", "application/json")
+      .body(Json.stringify(body))
+      .post(uri"${u}")
+    try {
+      var response = req.send(backend)
+      response.body match {
+        case Right(responseBody) => responseBody
+        case Left(error) =>
+          throw new Exception("Error posting data: " + error)
+      }
+    } finally backend.close()
+  }
+
   def datasetInfo(name: String, project: String): DatasetInfo = {
     val infoStr: String =
       get(
@@ -143,7 +169,9 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
       name: String,
       project: String,
       pageSize: Int = 10000,
-      nextLink: Option[String] = None
+      nextLink: Option[String] = None,
+      cql2Filter: Option[JsValue] = None,
+      intersects: Option[JsValue] = None
   ): FeatureCollection = {
     nextLink match {
       case Some(link) =>
@@ -155,19 +183,46 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
       case None =>
     }
 
-    logInfo(
-      s"Searching dataset: $name in project: $project with pageSize: $pageSize"
-    )
+    val hasFilters = cql2Filter.isDefined || intersects.isDefined
 
-    val resStr: String = get(
-      "boson",
-      s"datasets/$project/$name/stac/search",
-      Map[String, String](
-        "limit" -> pageSize.toString()
+    if (hasFilters) {
+      logInfo(
+        s"Searching dataset: $name in project: $project with pageSize: $pageSize and filters"
       )
-    )
 
-    Json.parse(resStr).as[FeatureCollection]
+      // Build POST request body
+      var requestBody = Json.obj("limit" -> pageSize)
+
+      cql2Filter.foreach { filter =>
+        requestBody = requestBody + ("filter" -> filter)
+      }
+
+      intersects.foreach { geom =>
+        requestBody = requestBody + ("intersects" -> geom)
+      }
+
+      val resStr = post(
+        "boson",
+        s"datasets/$project/$name/stac/search",
+        requestBody
+      )
+
+      Json.parse(resStr).as[FeatureCollection]
+    } else {
+      logInfo(
+        s"Searching dataset: $name in project: $project with pageSize: $pageSize"
+      )
+
+      val resStr: String = get(
+        "boson",
+        s"datasets/$project/$name/stac/search",
+        Map[String, String](
+          "limit" -> pageSize.toString()
+        )
+      )
+
+      Json.parse(resStr).as[FeatureCollection]
+    }
   }
 
 }
