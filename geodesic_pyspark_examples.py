@@ -151,6 +151,83 @@ def analyze_data(sedona, df):
         return False
 
 
+def spatial_filter_pushdown_example(sedona):
+    """
+    Demonstrate spatial filter pushdown with combined spatial + metadata filters
+    """
+    print("\n🚀 Spatial Filter Pushdown Example")
+    print("=" * 50)
+
+    try:
+        # Load data with spatial filter pushdown enabled
+        df = (
+            sedona.read.format("ai.seer.geodesic.sources.boson")
+            .option("datasetId", "ukr-adm3-boundaries")
+            .option("projectId", "global")
+            .load()
+        )
+
+        # Register as temporary view
+        df.createOrReplaceTempView("boundaries")
+
+        # Example 1: Spatial + Metadata Filter (ST_Intersects with admin_level filter)
+        print("\n🎯 Example 1: ST_Intersects + Metadata Filter")
+        print("   Query: Find admin level 3 boundaries that intersect with Kyiv region")
+
+        kyiv_bbox = "POLYGON((30.0 50.0, 31.0 50.0, 31.0 51.0, 30.0 51.0, 30.0 50.0))"
+
+        result1 = sedona.sql(
+            f"""
+            SELECT name, admin_level, geometry_bbox_xmin, geometry_bbox_ymin, 
+                   geometry_bbox_xmax, geometry_bbox_ymax
+            FROM boundaries 
+            WHERE ST_Intersects(geometry, ST_GeomFromWKT('{kyiv_bbox}'))
+              AND admin_level = 3
+        """
+        )
+
+        count1 = result1.count()
+        print(f"   ✅ Found {count1} admin level 3 boundaries in Kyiv region")
+        if count1 > 0:
+            result1.show(5, truncate=False)
+
+        # Example 2: ST_Contains with name filter
+        print("\n🎯 Example 2: ST_Contains + Name Filter")
+        print("   Query: Find boundaries containing a point and with specific name pattern")
+
+        kyiv_point = "POINT(30.5 50.5)"
+
+        result2 = sedona.sql(
+            f"""
+            SELECT name, admin_level, geometry_bbox_xmin, geometry_bbox_ymin,
+                   geometry_bbox_xmax, geometry_bbox_ymax
+            FROM boundaries 
+            WHERE ST_Contains(geometry, ST_GeomFromWKT('{kyiv_point}'))
+              AND name LIKE '%Kyiv%'
+        """
+        )
+
+        count2 = result2.count()
+        print(f"   ✅ Found {count2} boundaries containing Kyiv point with 'Kyiv' in name")
+        if count2 > 0:
+            result2.show(5, truncate=False)
+
+        print("\n💡 Performance Notes:")
+        print(
+            "   - Spatial filters (ST_Intersects, ST_Contains, ST_Within, etc.) are pushed down to server"
+        )
+        print(
+            "   - Metadata filters (admin_level, name) are applied client-side after spatial filtering"
+        )
+        print("   - This combination provides optimal performance for complex queries")
+
+        return True
+
+    except Exception as e:
+        print(f"❌ Error in spatial filter example: {e}")
+        return False
+
+
 def performance_tips():
     """
     Display performance optimization tips
@@ -179,6 +256,12 @@ def main():
     if df is not None:
         # Analyze the data
         analyze_data(sedona, df)
+
+        # Demonstrate spatial filter pushdown
+        spatial_filter_pushdown_example(sedona)
+
+        # Show performance tips
+        performance_tips()
 
     else:
         print("\n❌ Test failed - could not load data")

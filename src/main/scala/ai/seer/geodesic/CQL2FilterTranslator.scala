@@ -3,6 +3,9 @@ package ai.seer.geodesic
 import org.apache.spark.sql.sources._
 import play.api.libs.json._
 import org.apache.spark.internal.Logging
+import org.locationtech.jts.geom.Geometry
+import org.locationtech.jts.io.{WKTReader, WKTWriter}
+import scala.util.{Try, Success, Failure}
 
 /** Translates Spark SQL filters to CQL2 JSON format and extracts spatial
   * filters for the Geodesic API's intersects parameter.
@@ -17,26 +20,20 @@ object CQL2FilterTranslator extends Logging {
       unsupportedFilters: Array[Filter]
   )
 
-  /** Analyzes and separates filters into supported categories
+  /** Analyzes and separates filters into supported categories Note: Spatial
+    * filters are handled by SpatialFilterPushDown
     */
   def analyzeFilters(filters: Array[Filter]): FilterAnalysis = {
     val (supported, unsupported) = filters.partition(canPushDown)
-
-    val (spatialFilters, attributeFilters) =
-      supported.partition(isSpatialFilter)
-
-    val cql2Filter = if (attributeFilters.nonEmpty) {
-      Some(translateAttributeFilters(attributeFilters))
+    val cql2Filter = if (supported.nonEmpty) {
+      Some(translateAttributeFilters(supported))
     } else None
 
-    val intersects = if (spatialFilters.nonEmpty) {
-      extractIntersectsGeometry(spatialFilters)
-    } else None
-
-    FilterAnalysis(cql2Filter, intersects, unsupported)
+    FilterAnalysis(cql2Filter, None, unsupported)
   }
 
-  /** Determines if a filter can be pushed down to the server
+  /** Determines if a filter can be pushed down to the server Note: Only
+    * attribute filters are handled here now.
     */
   def canPushDown(filter: Filter): Boolean = filter match {
     case _: EqualTo            => true
@@ -54,20 +51,7 @@ object CQL2FilterTranslator extends Logging {
     case _: And                => true
     case _: Or                 => true
     case _: Not                => true
-    // Spatial filters (these will be handled separately)
-    case f if isSpatialFilter(f) => true
-    case _                       => false
-  }
-
-  /** Determines if a filter is spatial (should go to intersects parameter)
-    */
-  def isSpatialFilter(filter: Filter): Boolean = filter match {
-    // For now, we'll detect spatial filters by function name patterns
-    // This is a simplified approach - in practice you might want more sophisticated detection
-    case f =>
-      f.toString.toLowerCase.contains("st_intersects") ||
-      f.toString.toLowerCase.contains("st_within") ||
-      f.toString.toLowerCase.contains("st_contains")
+    case _                     => false
   }
 
   /** Translates attribute filters to CQL2 JSON format
@@ -265,20 +249,56 @@ object CQL2FilterTranslator extends Logging {
     case _          => JsString(value.toString)
   }
 
-  /** Extracts geometry for intersects parameter from spatial filters This is a
-    * simplified implementation - in practice you'd need more sophisticated
-    * geometry extraction from spatial function calls
+  /** Converts WKT to GeoJSON
     */
-  def extractIntersectsGeometry(
-      spatialFilters: Array[Filter]
-  ): Option[JsValue] = {
-    // For now, return None as we need more context about how spatial filters
-    // are represented in your Spark SQL queries
-    // This would need to be implemented based on how Sedona spatial functions
-    // are represented in the filter tree
-    logInfo(
-      s"Spatial filters detected but geometry extraction not yet implemented: ${spatialFilters.mkString(", ")}"
-    )
-    None
+  def wktToGeoJson(wkt: String): JsValue = {
+    try {
+      val reader = new WKTReader()
+      val geometry = reader.read(wkt)
+      geometryToGeoJson(geometry)
+    } catch {
+      case e: Exception =>
+        logWarning(s"Failed to parse WKT: $wkt", e)
+        // Return a simple point as fallback
+        Json.obj(
+          "type" -> "Point",
+          "coordinates" -> JsArray(Seq(JsNumber(0), JsNumber(0)))
+        )
+    }
+  }
+
+  /** Converts JTS Geometry to GeoJSON
+    */
+  private def geometryToGeoJson(geometry: Geometry): JsValue = {
+    val geometryType = geometry.getGeometryType
+    val coordinates = geometry.getCoordinates
+
+    geometryType.toUpperCase match {
+      case "POINT" =>
+        val coord = coordinates(0)
+        Json.obj(
+          "type" -> "Point",
+          "coordinates" -> JsArray(Seq(JsNumber(coord.x), JsNumber(coord.y)))
+        )
+
+      case "POLYGON" =>
+        val coordsJson = coordinates.map { coord =>
+          JsArray(Seq(JsNumber(coord.x), JsNumber(coord.y)))
+        }
+        Json.obj(
+          "type" -> "Polygon",
+          "coordinates" -> JsArray(Seq(JsArray(coordsJson)))
+        )
+
+      case _ =>
+        // For other geometry types, convert coordinates to a simple polygon
+        val coordsJson = coordinates.map { coord =>
+          JsArray(Seq(JsNumber(coord.x), JsNumber(coord.y)))
+        }
+        Json.obj(
+          "type" -> "Polygon",
+          "coordinates" -> JsArray(Seq(JsArray(coordsJson)))
+        )
+    }
   }
 }

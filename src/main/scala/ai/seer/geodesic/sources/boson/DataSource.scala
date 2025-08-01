@@ -214,13 +214,13 @@ class BosonScanBuilder(
   override def pushedFilters(): Array[Filter] = _pushedFilters
 
   override def build(): Scan = {
-    // Analyze filters again to get the CQL2 and intersects parameters
-    val analysis = CQL2FilterTranslator.analyzeFilters(_pushedFilters)
+    // Analyze filters to get CQL2 parameters
+    val filterAnalysis = CQL2FilterTranslator.analyzeFilters(_pushedFilters)
 
     // Create updated DataSourceConfig with filters
     val updatedSrc = src.copy(
-      cql2Filter = analysis.cql2Filter,
-      intersects = analysis.intersects
+      cql2Filter = filterAnalysis.cql2Filter,
+      intersects = filterAnalysis.intersects
     )
 
     new BosonScan(client, updatedSrc, info)
@@ -234,9 +234,9 @@ case class BosonPartition(
 ) extends InputPartition
 
 class BosonScan(
-    client: GeodesicClient,
-    src: DataSourceConfig,
-    info: DatasetInfo
+    val client: GeodesicClient,
+    val src: DataSourceConfig,
+    val info: DatasetInfo
 ) extends Scan
     with Batch {
   override def readSchema(): StructType = {
