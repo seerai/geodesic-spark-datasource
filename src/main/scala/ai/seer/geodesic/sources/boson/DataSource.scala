@@ -1,6 +1,9 @@
 package ai.seer.geodesic.sources.boson
 
 import java.util
+import java.time.Instant
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
 
 import org.apache.spark.sql.connector.catalog.{
   TableProvider,
@@ -14,7 +17,8 @@ import org.apache.spark.sql.types.{
   StructType,
   IntegerType,
   DoubleType,
-  BooleanType
+  BooleanType,
+  TimestampType
 }
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.connector.read._
@@ -153,12 +157,16 @@ object BosonTable {
         .map {
           case (name: String, fieldDef: FieldDef) => {
             val fieldType = fieldDef.`type`
-            fieldType match {
-              case "string"  => StructField(name, StringType)
-              case "integer" => StructField(name, IntegerType)
-              case "number"  => StructField(name, DoubleType)
-              case "boolean" => StructField(name, BooleanType)
-              case _         => null
+            val format = fieldDef.format
+
+            (fieldType, format) match {
+              case ("string", Some("date-time")) =>
+                StructField(name, TimestampType)
+              case ("string", _)  => StructField(name, StringType)
+              case ("integer", _) => StructField(name, IntegerType)
+              case ("number", _)  => StructField(name, DoubleType)
+              case ("boolean", _) => StructField(name, BooleanType)
+              case _              => null
             }
           }
         }
@@ -281,6 +289,53 @@ class BosonPartitionReader(partition: BosonPartition)
   )
   private val fieldTypes = schema.fields.map(f => f.name -> f.dataType).toMap
 
+  // Helper method to parse datetime strings to microseconds since epoch
+  private def parseDateTime(dateTimeString: String): Long = {
+    try {
+      // Try ISO 8601 format first (handles Z suffix)
+      val instant = Instant.parse(dateTimeString)
+      // Convert to microseconds since epoch (Spark's internal timestamp format)
+      instant.getEpochSecond * 1000000L + instant.getNano / 1000L
+    } catch {
+      case _: DateTimeParseException =>
+        try {
+          // Try parsing with timezone offset (e.g., +00:00, -05:00)
+          val offsetDateTime = java.time.OffsetDateTime.parse(dateTimeString)
+          val instant = offsetDateTime.toInstant
+          instant.getEpochSecond * 1000000L + instant.getNano / 1000L
+        } catch {
+          case _: DateTimeParseException =>
+            try {
+              // Try parsing with ZonedDateTime for more complex timezone formats
+              val zonedDateTime = java.time.ZonedDateTime.parse(dateTimeString)
+              val instant = zonedDateTime.toInstant
+              instant.getEpochSecond * 1000000L + instant.getNano / 1000L
+            } catch {
+              case _: DateTimeParseException =>
+                try {
+                  // Try local datetime and assume UTC
+                  val formatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME
+                  val localDateTime =
+                    java.time.LocalDateTime.parse(dateTimeString, formatter)
+                  val instant =
+                    localDateTime.atZone(java.time.ZoneOffset.UTC).toInstant
+                  instant.getEpochSecond * 1000000L + instant.getNano / 1000L
+                } catch {
+                  case e: DateTimeParseException =>
+                    logWarning(
+                      s"Failed to parse datetime string '$dateTimeString': ${e.getMessage}"
+                    )
+                    // Return null for invalid datetime strings
+                    throw new IllegalArgumentException(
+                      s"Invalid datetime format: $dateTimeString",
+                      e
+                    )
+                }
+            }
+        }
+    }
+  }
+
   override def next(): Boolean = {
     // If we're already exhausted, return false
     if (isExhausted) {
@@ -349,7 +404,23 @@ class BosonPartitionReader(partition: BosonPartition)
         val expectedType = fieldTypes.get(key)
 
         value match {
-          case JsString(s) => Option(key, UTF8String.fromString(s.toString()))
+          case JsString(s) =>
+            expectedType match {
+              case Some(TimestampType) =>
+                try {
+                  Option(key, parseDateTime(s))
+                } catch {
+                  case e: IllegalArgumentException =>
+                    logError(
+                      s"Failed to parse datetime for field '$key': ${e.getMessage}"
+                    )
+                    Option(
+                      key,
+                      null
+                    ) // Return null for invalid datetime strings
+                }
+              case _ => Option(key, UTF8String.fromString(s.toString()))
+            }
           case JsNumber(n) =>
             expectedType match {
               case Some(IntegerType) =>
@@ -357,6 +428,9 @@ class BosonPartitionReader(partition: BosonPartition)
                 Option(key, Math.round(n.doubleValue()).toInt)
               case Some(DoubleType) =>
                 Option(key, n.doubleValue())
+              case Some(StringType) =>
+                // Convert numeric values to strings when schema expects StringType
+                Option(key, UTF8String.fromString(n.toString()))
               case _ =>
                 // Default to double if type is unknown
                 Option(key, n.doubleValue())
