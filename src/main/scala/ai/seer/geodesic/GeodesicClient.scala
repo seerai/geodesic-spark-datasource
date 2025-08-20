@@ -375,6 +375,7 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
 
       // Build POST request body
       var requestBody = Json.obj("limit" -> pageSize)
+      requestBody = requestBody + ("collection" -> JsString(collectionId))
 
       cql2Filter.foreach { filter =>
         requestBody = requestBody + ("filter" -> filter)
