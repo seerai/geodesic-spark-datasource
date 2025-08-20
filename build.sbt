@@ -17,6 +17,7 @@ lazy val root = (project in file(".")).settings(
     "org.apache.spark" %% "spark-sql" % "3.3.0" % "provided",
     "com.softwaremill.sttp.client3" %% "core" % "3.10.3",
     "org.playframework" %% "play-json" % "3.0.4",
+    "com.auth0" % "java-jwt" % "4.5.0",
     "org.locationtech.geomesa" %% "geomesa-spark-jts" % "5.2.0",
     "org.scalatest" %% "scalatest" % "3.2.2" % "test",
     "org.scalacheck" %% "scalacheck" % "1.15.2" % "test",

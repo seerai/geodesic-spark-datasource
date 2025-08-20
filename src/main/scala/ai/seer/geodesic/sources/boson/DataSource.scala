@@ -363,6 +363,7 @@ class BosonPartitionReader(partition: BosonPartition)
       val sr = partition.client.search(
         partition.src.datasetId,
         partition.src.projectId,
+        partition.src.collectionId,
         partition.src.pageSize,
         if (hasInitialized) nextLink else None,
         partition.src.cql2Filter,
