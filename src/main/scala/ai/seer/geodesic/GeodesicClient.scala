@@ -369,7 +369,7 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
     val hasFilters = cql2Filter.isDefined || intersects.isDefined
 
     logInfo(
-      s"Searching dataset: $name in project: $project with pageSize: $pageSize and filters"
+      s"Searching dataset: $name, collection: $collectionId, in project: $project, with pageSize: $pageSize"
     )
 
     // Build POST request body
