@@ -368,45 +368,34 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
 
     val hasFilters = cql2Filter.isDefined || intersects.isDefined
 
-    if (hasFilters) {
-      logInfo(
-        s"Searching dataset: $name in project: $project with pageSize: $pageSize and filters"
-      )
+    logInfo(
+      s"Searching dataset: $name in project: $project with pageSize: $pageSize and filters"
+    )
 
-      // Build POST request body
-      var requestBody = Json.obj("limit" -> pageSize)
-      requestBody = requestBody + ("collection" -> JsString(collectionId))
+    // Build POST request body
+    var requestBody = Json.obj("limit" -> pageSize)
+    // Add collections as an array of strings
+    requestBody =
+      requestBody + ("collections" -> JsArray(Seq(JsString(collectionId))))
 
-      cql2Filter.foreach { filter =>
-        requestBody = requestBody + ("filter" -> filter)
-      }
-
-      intersects.foreach { geom =>
-        requestBody = requestBody + ("intersects" -> geom)
-      }
-
-      val resStr = post(
-        "boson",
-        s"datasets/$project/$name/stac/search",
-        requestBody
-      )
-
-      Json.parse(resStr).as[FeatureCollection]
-    } else {
-      logInfo(
-        s"Searching dataset: $name in project: $project with pageSize: $pageSize"
-      )
-
-      val resStr: String = get(
-        "boson",
-        s"datasets/$project/$name/stac/search",
-        Map[String, String](
-          "limit" -> pageSize.toString()
-        )
-      )
-
-      Json.parse(resStr).as[FeatureCollection]
+    cql2Filter.foreach { filter =>
+      requestBody = requestBody + ("filter" -> filter)
     }
+
+    intersects.foreach { geom =>
+      requestBody = requestBody + ("intersects" -> geom)
+    }
+    logInfo(
+      s"Request body for dataset search: ${Json.prettyPrint(requestBody)}"
+    )
+    val resStr = post(
+      "boson",
+      s"datasets/$project/$name/stac/search",
+      requestBody
+    )
+
+    Json.parse(resStr).as[FeatureCollection]
+
   }
 
 }
