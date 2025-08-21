@@ -134,7 +134,10 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
           val isRetryableError = e.getMessage.contains("timeout") ||
             e.getMessage.contains("connection") ||
             e.getMessage.contains("ConnectException") ||
-            e.getMessage.contains("SocketTimeoutException")
+            e.getMessage.contains("SocketTimeoutException") ||
+            e.getMessage.contains("HttpTimeoutException") ||
+            e.getMessage.contains("ConnectTimeoutException") ||
+            e.getMessage.contains("ReadTimeoutException")
 
           if (!isRetryableError || attempt == maxRetries - 1) {
             logError(
@@ -160,6 +163,34 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
     }
 
     throw lastException
+  }
+
+  /** Centralized HTTP request method with retry logic and proper error handling
+    */
+  private def executeHttpRequest(
+      requestBuilder: () => sttp.client3.RequestT[sttp.client3.Identity, Either[
+        String,
+        String
+      ], Any],
+      operationName: String
+  ): String = {
+    withRetry(
+      () => {
+        val backend = createBackendWithCompression()
+        try {
+          val request = requestBuilder()
+          val response = request.send(backend)
+          response.body match {
+            case Right(body) => body.toString
+            case Left(error) =>
+              throw new Exception(s"HTTP request failed: $error")
+          }
+        } finally {
+          backend.close()
+        }
+      },
+      operationName
+    )
   }
 
   /** Load the config from the config file or environment variables
@@ -241,29 +272,19 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
       throw new Exception("No API key found")
     }
 
-    // Use retry logic for token requests
-    val tokens = withRetry(
-      () => {
-        val krampusHost = url("krampus", "auth/token")
-        val backend = createBackendWithCompression()
-
-        var req = basicRequest
+    // Use centralized HTTP request method for token requests
+    val krampusHost = url("krampus", "auth/token")
+    val responseBody = executeHttpRequest(
+      () =>
+        basicRequest
           .header("Api-Key", apiKey)
           .header("Accept-Encoding", "gzip, deflate, br")
           .readTimeout(readTimeout.seconds)
-          .get(uri"$krampusHost")
-
-        try {
-          var response = req.send(backend)
-          response.body match {
-            case Right(body) => Json.parse(body.toString).as[Tokens]
-            case Left(error) =>
-              throw new Exception("Error getting tokens: " + error)
-          }
-        } finally backend.close()
-      },
+          .get(uri"$krampusHost"),
       "Token request"
     )
+
+    val tokens = Json.parse(responseBody).as[Tokens]
 
     // Cache tokens in both instance and singleton cache
     _accessToken = tokens.access_token
@@ -291,22 +312,17 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
 
   def getURL(u: String): String = {
     val (accessToken, idToken) = getAccessToken()
-    val backend = createBackendWithCompression()
 
-    var req = basicRequest
-      .header("X-Auth-Request-Access-Token", "Bearer " + accessToken)
-      .header("Authorization", "Bearer " + idToken)
-      .header("Accept-Encoding", "gzip, deflate, br")
-      .readTimeout(readTimeout.seconds)
-      .get(uri"${u}")
-    try {
-      var response = req.send(backend)
-      response.body match {
-        case Right(body) => body.toString
-        case Left(error) =>
-          throw new Exception("Error getting data: " + error)
-      }
-    } finally backend.close()
+    executeHttpRequest(
+      () =>
+        basicRequest
+          .header("X-Auth-Request-Access-Token", "Bearer " + accessToken)
+          .header("Authorization", "Bearer " + idToken)
+          .header("Accept-Encoding", "gzip, deflate, br")
+          .readTimeout(readTimeout.seconds)
+          .get(uri"${u}"),
+      s"GET request to $u"
+    )
   }
 
   def post(
@@ -315,25 +331,20 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
       body: JsValue
   ): String = {
     val (accessToken, idToken) = getAccessToken()
-    val backend = createBackendWithCompression()
-
     val u = url(serviceName, path)
-    var req = basicRequest
-      .header("X-Auth-Request-Access-Token", "Bearer " + accessToken)
-      .header("Authorization", "Bearer " + idToken)
-      .header("Content-Type", "application/json")
-      .header("Accept-Encoding", "gzip, deflate, br")
-      .readTimeout(readTimeout.seconds)
-      .body(Json.stringify(body))
-      .post(uri"${u}")
-    try {
-      var response = req.send(backend)
-      response.body match {
-        case Right(responseBody) => responseBody.toString
-        case Left(error) =>
-          throw new Exception("Error posting data: " + error)
-      }
-    } finally backend.close()
+
+    executeHttpRequest(
+      () =>
+        basicRequest
+          .header("X-Auth-Request-Access-Token", "Bearer " + accessToken)
+          .header("Authorization", "Bearer " + idToken)
+          .header("Content-Type", "application/json")
+          .header("Accept-Encoding", "gzip, deflate, br")
+          .readTimeout(readTimeout.seconds)
+          .body(Json.stringify(body))
+          .post(uri"${u}"),
+      s"POST request to $u"
+    )
   }
 
   def datasetInfo(name: String, project: String): DatasetInfo = {
