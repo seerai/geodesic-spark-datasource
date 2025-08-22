@@ -19,7 +19,8 @@ case class DatasetInfo(
     name: String,
     alias: String,
     config: Option[ProviderConfig] = None,
-    fields: Map[String, Map[String, FieldDef]] = Map.empty
+    fields: Map[String, Map[String, FieldDef]] = Map.empty,
+    geometryTypes: Map[String, String] = Map.empty
 )
 
 object DatasetInfo {
