@@ -12,7 +12,7 @@ case class Link(
 )
 
 case class Feature(
-    geometry: Geometry,
+    geometry: Option[Geometry],
     properties: Map[String, JsValue]
 )
 

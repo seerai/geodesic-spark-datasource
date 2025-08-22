@@ -174,10 +174,10 @@ object BosonTable {
         .toSeq
     fields = fields.sortBy(_.name)
 
-    fields = fields :+ StructField(
-      "geometry",
-      GeometryUDT
-    )
+    val geometryType = info.geometryTypes.getOrElse(collectionId, "none")
+    if (geometryType != "none") {
+      fields = fields :+ StructField("geometry", GeometryUDT)
+    }
     StructType(fields)
   }
 }
@@ -447,7 +447,10 @@ class BosonPartitionReader(partition: BosonPartition)
     // Create values array in the same order as schema fields
     val values = schema.fields.map { field =>
       if (field.name == "geometry") {
-        GeometryUDT.serialize(feature.geometry)
+        feature.geometry match {
+          case Some(geom) => GeometryUDT.serialize(geom)
+          case None       => null
+        }
       } else {
         propertyValues.getOrElse(field.name, null)
       }
