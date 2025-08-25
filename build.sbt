@@ -14,7 +14,7 @@ lazy val root = (project in file(".")).settings(
   coverageHighlighting := true,
   libraryDependencies ++= Seq(
     "org.apache.spark" %% "spark-streaming" % "3.3.0" % "provided",
-    "org.apache.spark" %% "spark-sql" % "3.3.0" % "provided",
+    "org.apache.spark" %% "spark-sql" % "3.3.2" % "provided",
     "com.softwaremill.sttp.client3" %% "core" % "3.10.3",
     "org.playframework" %% "play-json" % "3.0.4",
     "com.auth0" % "java-jwt" % "4.5.0",
