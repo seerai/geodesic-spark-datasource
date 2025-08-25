@@ -57,16 +57,16 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
 
   // Timeout configurations (in seconds)
   private val connectionTimeout =
-    sys.env.getOrElse("GEODESIC_CONNECTION_TIMEOUT", "10").toInt
+    sys.env.getOrElse("GEODESIC_CONNECTION_TIMEOUT", "60").toInt
   private val readTimeout =
-    sys.env.getOrElse("GEODESIC_READ_TIMEOUT", "30").toInt
+    sys.env.getOrElse("GEODESIC_READ_TIMEOUT", "60").toInt
   private val requestTimeout =
     sys.env.getOrElse("GEODESIC_REQUEST_TIMEOUT", "60").toInt
 
   // Retry configurations
   private val maxRetries = sys.env.getOrElse("GEODESIC_MAX_RETRIES", "3").toInt
   private val baseDelayMs =
-    sys.env.getOrElse("GEODESIC_BASE_DELAY_MS", "1000").toInt
+    sys.env.getOrElse("GEODESIC_BASE_DELAY_MS", "2000").toInt
 
   // JWT expiration safety margin (in seconds)
   private val expirationMarginSeconds =
