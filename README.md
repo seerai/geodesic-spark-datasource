@@ -23,7 +23,7 @@ Add the following dependency to your `pom.xml`:
 <dependency>
     <groupId>ai.seer</groupId>
     <artifactId>geodesic-spark-datasource-sedona_2.12</artifactId>
-    <version>0.1.6</version>
+    <version>0.1.7</version>
 </dependency>
 ```
 
@@ -32,7 +32,7 @@ Add the following dependency to your `pom.xml`:
 Add the following to your `build.sbt`:
 
 ```scala
-libraryDependencies += "ai.seer" %% "geodesic-spark-datasource-sedona" % "0.1.6"
+libraryDependencies += "ai.seer" %% "geodesic-spark-datasource-sedona" % "0.1.7"
 ```
 
 ### Gradle
@@ -40,7 +40,7 @@ libraryDependencies += "ai.seer" %% "geodesic-spark-datasource-sedona" % "0.1.6"
 Add the following to your `build.gradle`:
 
 ```gradle
-implementation 'ai.seer:geodesic-spark-datasource-sedona_2.12:0.1.6'
+implementation 'ai.seer:geodesic-spark-datasource-sedona_2.12:0.1.7'
 ```
 
 ## Quick Start
