@@ -12,7 +12,36 @@ import java.util.Date
 import scala.util.{Try, Success, Failure}
 import scala.util.Random
 import scala.concurrent.duration._
+import sttp.model.StatusCode
+import sttp.model.Header
+
 case class Tokens(access_token: String, id_token: String)
+
+/** Geodesic error response structure */
+case class GeodesicErrorDetail(
+    detail: Option[String],
+    `type`: Option[String],
+    title: Option[String],
+    status: Option[Int],
+    instance: Option[String]
+)
+
+case class GeodesicError(error: Option[GeodesicErrorDetail])
+
+object GeodesicErrorDetail {
+  implicit val geodesicErrorDetailReads = Json.reads[GeodesicErrorDetail]
+}
+
+object GeodesicError {
+  implicit val geodesicErrorReads = Json.reads[GeodesicError]
+}
+
+/** Custom exception for retryable HTTP status codes */
+case class RetryableHttpException(
+    statusCode: Int,
+    message: String,
+    retryAfter: Option[Int] = None
+) extends Exception(s"HTTP $statusCode: $message")
 
 object Tokens {
   implicit val tokensReads = Json.reads[Tokens]
@@ -72,6 +101,14 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
   private val expirationMarginSeconds =
     sys.env.getOrElse("GEODESIC_TOKEN_EXPIRATION_MARGIN", "300").toInt
 
+  // Retryable HTTP status codes (default: 429, 502, 503, 504)
+  private val retryableHttpCodes: Set[Int] =
+    sys.env
+      .getOrElse("GEODESIC_RETRYABLE_HTTP_CODES", "429,500,502,503,504")
+      .split(",")
+      .map(_.trim.toInt)
+      .toSet
+
   /** Create an HTTP client backend with compression and timeout configurations
     */
   private def createBackendWithCompression() = {
@@ -120,6 +157,49 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
     }
   }
 
+  /** Check if an exception is retryable based on its type and message
+    */
+  private def isRetryableException(e: Exception): Boolean = e match {
+    case _: RetryableHttpException => true
+    case ex: Exception =>
+      val msg = ex.getMessage
+      msg != null && (
+        msg.contains("timeout") ||
+          msg.contains("connection") ||
+          msg.contains("ConnectException") ||
+          msg.contains("SocketTimeoutException") ||
+          msg.contains("HttpTimeoutException") ||
+          msg.contains("ConnectTimeoutException") ||
+          msg.contains("ReadTimeoutException")
+      )
+    case _ => false
+  }
+
+  /** Calculate retry delay based on exception type
+    */
+  private def calculateRetryDelay(e: Exception, attempt: Int): Int = e match {
+    case httpEx: RetryableHttpException =>
+      httpEx.retryAfter match {
+        case Some(retryAfterSeconds) =>
+          logWarning(
+            s"Received HTTP ${httpEx.statusCode}, retrying after ${retryAfterSeconds} seconds as specified by Retry-After header"
+          )
+          retryAfterSeconds * 1000
+        case None =>
+          val delay =
+            baseDelayMs * Math.pow(2, attempt).toInt + Random.nextInt(1000)
+          logWarning(
+            s"Received HTTP ${httpEx.statusCode}, retrying in ${delay}ms"
+          )
+          delay
+      }
+    case _ =>
+      val delay =
+        baseDelayMs * Math.pow(2, attempt).toInt + Random.nextInt(1000)
+      logWarning(s"Request failed, retrying in ${delay}ms: ${e.getMessage}")
+      delay
+  }
+
   /** Execute a function with retry logic and exponential backoff
     */
   private def withRetry[T](operation: () => T, operationName: String): T = {
@@ -131,26 +211,21 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
       } catch {
         case e: Exception =>
           lastException = e
-          val isRetryableError = e.getMessage.contains("timeout") ||
-            e.getMessage.contains("connection") ||
-            e.getMessage.contains("ConnectException") ||
-            e.getMessage.contains("SocketTimeoutException") ||
-            e.getMessage.contains("HttpTimeoutException") ||
-            e.getMessage.contains("ConnectTimeoutException") ||
-            e.getMessage.contains("ReadTimeoutException")
 
-          if (!isRetryableError || attempt == maxRetries - 1) {
-            logError(
-              s"$operationName failed on attempt ${attempt + 1}: ${e.getMessage}"
-            )
+          // Check if we should retry
+          if (!isRetryableException(e) || attempt == maxRetries - 1) {
+            val errorMsg = e match {
+              case httpEx: RetryableHttpException =>
+                s"$operationName failed on attempt ${attempt + 1} with HTTP ${httpEx.statusCode}: ${httpEx.getMessage}"
+              case _ =>
+                s"$operationName failed on attempt ${attempt + 1}: ${e.getMessage}"
+            }
+            logError(errorMsg)
             throw e
           }
 
-          val delayMs =
-            baseDelayMs * Math.pow(2, attempt).toInt + Random.nextInt(1000)
-          logWarning(
-            s"$operationName failed on attempt ${attempt + 1}, retrying in ${delayMs}ms: ${e.getMessage}"
-          )
+          // Calculate and apply retry delay
+          val delayMs = calculateRetryDelay(e, attempt)
 
           try {
             Thread.sleep(delayMs)
@@ -163,6 +238,32 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
     }
 
     throw lastException
+  }
+
+  /** Parse Geodesic error response and extract meaningful error message
+    */
+  private def parseGeodesicError(errorBody: String): String = {
+    Try {
+      val json = Json.parse(errorBody)
+      val geodesicError = json.as[GeodesicError]
+
+      geodesicError.error match {
+        case Some(errorDetail) =>
+          val parts = List(
+            errorDetail.title,
+            errorDetail.detail,
+            errorDetail.`type`,
+            errorDetail.instance
+          ).flatten
+
+          if (parts.nonEmpty) {
+            parts.mkString(" - ")
+          } else {
+            errorBody
+          }
+        case None => errorBody
+      }
+    }.getOrElse(errorBody)
   }
 
   /** Centralized HTTP request method with retry logic and proper error handling
@@ -180,10 +281,40 @@ class GeodesicClient(accessToken: String = "", idToken: String = "")
         try {
           val request = requestBuilder()
           val response = request.send(backend)
+
+          // Check if the status code is retryable
+          if (retryableHttpCodes.contains(response.code.code)) {
+            // Extract Retry-After header if present (for 429 responses)
+            val retryAfter = if (response.code.code == 429) {
+              response.header("Retry-After").flatMap { value =>
+                Try(value.toInt).toOption
+              }
+            } else {
+              None
+            }
+
+            // Try to parse error message from response body
+            val errorMessage = response.body match {
+              case Left(error) => parseGeodesicError(error)
+              case Right(_) =>
+                s"Received retryable HTTP status code ${response.code.code}"
+            }
+
+            throw RetryableHttpException(
+              response.code.code,
+              errorMessage,
+              retryAfter
+            )
+          }
+
           response.body match {
             case Right(body) => body.toString
             case Left(error) =>
-              throw new Exception(s"HTTP request failed: $error")
+              // Parse Geodesic error format for better error messages
+              val errorMessage = parseGeodesicError(error)
+              throw new Exception(
+                s"HTTP request failed with status ${response.code.code}: $errorMessage"
+              )
           }
         } finally {
           backend.close()
